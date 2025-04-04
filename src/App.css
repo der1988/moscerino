@@ -1,7 +1,6 @@
 #root {
-  max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0;
   text-align: center;
 }
 
@@ -39,4 +38,31 @@
 
 .read-the-docs {
   color: #888;
+}
+
+#score {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  font-weight: bold;
+  color: black;
+  z-index: 10;
+}
+
+.bonus {
+  width: 6px;
+  height: 6px;
+  background-color: black;
+  position: absolute;
+  z-index: 5;
+}
+
+.bullet {
+  width: 4px;
+  height: 4px;
+  background-color: red;
+  position: absolute;
+  z-index: 5;
 }
