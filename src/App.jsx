@@ -21,11 +21,11 @@ const AUTO_ATTRACTION_SPEED = 1 // Velocità di attrazione automatica
 const OBSTACLE_SIZE = 16 // Dimensione degli ostacoli
 const OBSTACLE_AVOIDANCE_RADIUS = 40 // Raggio entro cui i nemici intelligenti iniziano a evitare
 
-// Slow Motion Constants
-const SLOW_MOTION_DURATION_FRAMES = 3 * 60; // 3 secondi a 60fps
-const SLOW_MOTION_COOLDOWN_FRAMES = 10 * 60; // 10 secondi a 60fps
-const SLOW_MOTION_FACTOR = 0.3; // Rallenta i nemici al 30% della velocità
-const PLAYER_SLOW_MOTION_FACTOR = 0.6 // Rallenta il giocatore al 70% (meno dei nemici)
+// Boost Mode Constants (sostituisce Slow Motion)
+const BOOST_DURATION_FRAMES = 20; // Durata boost: circa 0.3 secondi a 60fps 
+const BOOST_COOLDOWN_FRAMES = 10 * 60; // 10 secondi a 60fps
+const ENEMY_SLOW_FACTOR = 0.75; // Rallenta i nemici al 75% della velocità
+const PLAYER_BOOST_FACTOR = 1.8; // Accelera il giocatore al 180% della velocità
 const BONUS_ATTRACTION_RADIUS = 50; // Raggio entro cui il bonus viene attratto al giocatore
 const BONUS_ATTRACTION_SPEED = 0.8; // Velocità di attrazione del bonus
 
@@ -258,12 +258,12 @@ function App() {
   const [enemies, setEnemies] = useState([createEnemy()]) // Usa la funzione createEnemy
   const [bonusPosition, setBonusPosition] = useState(null) // Ora include { x, y, size }
   const [score, setScore] = useState(0)
-  // Non usiamo più lo stato del frame perché causava troppi re-render
-  // const [frame, setFrame] = useState(0)
-  // Slow Motion State
-  const [isSlowMotionActive, setIsSlowMotionActive] = useState(false)
-  const [slowMotionDurationTimer, setSlowMotionDurationTimer] = useState(0)
-  const [slowMotionCooldownTimer, setSlowMotionCooldownTimer] = useState(0)
+  
+  // Boost Mode State (sostituisce Slow Motion)
+  const [isBoostActive, setIsBoostActive] = useState(false)
+  const [boostDurationTimer, setBoostDurationTimer] = useState(0)
+  const [boostCooldownTimer, setBoostCooldownTimer] = useState(0)
+  
   // Stati per livelli e ostacoli
   const [obstacles, setObstacles] = useState([])
   const [level, setLevel] = useState(1)
@@ -284,9 +284,9 @@ function App() {
     keys,
     enemies,
     bonusPosition,
-    isSlowMotionActive,
-    slowMotionDurationTimer,
-    slowMotionCooldownTimer
+    isBoostActive,
+    boostDurationTimer,
+    boostCooldownTimer
   });
   
   // Aggiorniamo il ref ogni volta che cambiano gli stati
@@ -297,9 +297,9 @@ function App() {
       keys,
       enemies,
       bonusPosition,
-      isSlowMotionActive,
-      slowMotionDurationTimer,
-      slowMotionCooldownTimer
+      isBoostActive,
+      boostDurationTimer,
+      boostCooldownTimer
     };
   }, [
     position,
@@ -307,9 +307,9 @@ function App() {
     keys,
     enemies,
     bonusPosition,
-    isSlowMotionActive,
-    slowMotionDurationTimer,
-    slowMotionCooldownTimer
+    isBoostActive,
+    boostDurationTimer,
+    boostCooldownTimer
   ]);
 
   // Funzione per generare una nuova posizione e dimensione del bonus
@@ -395,10 +395,10 @@ function App() {
     setBonusPosition(generateNewBonus()) // Rigenera bonus al reset
     setScore(0)
     setVelocity({ x: 0, y: 0 }) // Resetta anche la velocità del giocatore
-    // Resetta anche slow motion
-    setIsSlowMotionActive(false)
-    setSlowMotionDurationTimer(0)
-    setSlowMotionCooldownTimer(0)
+    // Resetta anche boost
+    setIsBoostActive(false)
+    setBoostDurationTimer(0)
+    setBoostCooldownTimer(0)
     // Resetta livello e ostacoli
     setLevel(1)
     setObstacles([])
@@ -432,7 +432,7 @@ function App() {
 
   // Utilizzo useMemo per il calcolo della traiettoria per evitare ricalcoli inutili
   const trajectoryPoints = useMemo(() => {
-    if (!isSlowMotionActive || (Math.abs(velocity.x) <= 0.1 && Math.abs(velocity.y) <= 0.1 && !Object.values(keys).some(v => v))) {
+    if (!isBoostActive || (Math.abs(velocity.x) <= 0.1 && Math.abs(velocity.y) <= 0.1 && !Object.values(keys).some(v => v))) {
       return [];
     }
     
@@ -488,11 +488,12 @@ function App() {
     }
     
     return points;
-  }, [isSlowMotionActive, velocity, position, keys, bonusPosition]);
+  }, [isBoostActive, velocity, position, keys, bonusPosition]);
 
   // Funzione ottimizzata per aggiornare lo stato dei nemici
-  const updateEnemies = useCallback((enemies, playerPos, playerVel, bonusPos, isSlowMotion) => {
-    const timeScale = isSlowMotion ? SLOW_MOTION_FACTOR : 1.0;
+  const updateEnemies = useCallback((enemies, playerPos, playerVel, bonusPos, isBoostMode) => {
+    // Se il boost è attivo, i nemici rallentano leggermente
+    const timeScale = isBoostMode ? ENEMY_SLOW_FACTOR : 1.0;
     const predictedX = playerPos.x + playerVel.x * PREDICTION_FACTOR;
     const predictedY = playerPos.y + playerVel.y * PREDICTION_FACTOR;
 
@@ -705,7 +706,7 @@ function App() {
       if (Math.abs(newVx) < 0.01) newVx = 0;
       if (Math.abs(newVy) < 0.01) newVy = 0;
 
-      // Applica velocità alla posizione del nemico SCALATA per slow motion
+      // Applica velocità alla posizione del nemico SCALATA per boost
       let newX = enemy.x + newVx * timeScale
       let newY = enemy.y + newVy * timeScale
 
@@ -776,24 +777,24 @@ function App() {
         keys,
         enemies,
         bonusPosition,
-        isSlowMotionActive,
-        slowMotionDurationTimer,
-        slowMotionCooldownTimer
+        isBoostActive,
+        boostDurationTimer,
+        boostCooldownTimer
       } = gameStateRef.current;
       
-      // Aggiorna timer slow motion
-      if (isSlowMotionActive) {
-        const nextTimer = slowMotionDurationTimer - 1;
+      // Aggiorna timer boost
+      if (isBoostActive) {
+        const nextTimer = boostDurationTimer - 1;
         if (nextTimer <= 0) {
-          setIsSlowMotionActive(false);
-          setSlowMotionDurationTimer(0);
+          setIsBoostActive(false);
+          setBoostDurationTimer(0);
         } else {
-          setSlowMotionDurationTimer(nextTimer);
+          setBoostDurationTimer(nextTimer);
         }
       }
       
-      if (slowMotionCooldownTimer > 0) {
-        setSlowMotionCooldownTimer(Math.max(0, slowMotionCooldownTimer - 1));
+      if (boostCooldownTimer > 0) {
+        setBoostCooldownTimer(Math.max(0, boostCooldownTimer - 1));
       }
       
       // --- Aggiornamento Moscerino ---
@@ -813,8 +814,8 @@ function App() {
         }
       }
       
-      // Fattore di scala temporale per il giocatore
-      const playerTimeScale = isSlowMotionActive ? PLAYER_SLOW_MOTION_FACTOR : 1.0;
+      // Fattore di scala temporale per il giocatore - BOOST ACCELERA il giocatore
+      const playerTimeScale = isBoostActive ? PLAYER_BOOST_FACTOR : 1.0;
       
       // Aggiorna velocità e posizione del giocatore in una singola operazione
       const acceleration = 0.3;
@@ -823,7 +824,7 @@ function App() {
       const finalVx = Math.abs(newVx) < 0.01 ? 0 : newVx;
       const finalVy = Math.abs(newVy) < 0.01 ? 0 : newVy;
       
-      // Calcola nuova posizione
+      // Calcola nuova posizione CON BOOST
       if (Math.abs(finalVx) >= 0.01 || Math.abs(finalVy) >= 0.01) {
         let newX = position.x + finalVx * playerTimeScale;
         let newY = position.y + finalVy * playerTimeScale;
@@ -836,13 +837,13 @@ function App() {
       
       setVelocity({ x: finalVx, y: finalVy });
       
-      // Aggiorna nemici
+      // Aggiorna nemici tenendo conto del BOOST MODE
       const updatedEnemies = updateEnemies(
         enemies,
         position,
         velocity,
         bonusPosition,
-        isSlowMotionActive
+        isBoostActive
       );
       
       setEnemies(updatedEnemies);
@@ -871,7 +872,7 @@ function App() {
           } else {
             // Attrazione standard
             const baseAttractionSpeed = BONUS_ATTRACTION_SPEED * (1 - distToBonus / BONUS_ATTRACTION_RADIUS);
-            attractionSpeed = isSlowMotionActive ? baseAttractionSpeed * 1.5 : baseAttractionSpeed;
+            attractionSpeed = isBoostActive ? baseAttractionSpeed * 1.5 : baseAttractionSpeed;
           }
           
           // Applica movimento di attrazione
@@ -971,10 +972,10 @@ function App() {
     const handleKeyDown = (e) => {
       if (e.key === ' ' ) { // Barra spaziatrice
          e.preventDefault(); // Impedisce lo scroll della pagina
-         if (slowMotionCooldownTimer <= 0) {
-             setIsSlowMotionActive(true);
-             setSlowMotionDurationTimer(SLOW_MOTION_DURATION_FRAMES);
-             setSlowMotionCooldownTimer(SLOW_MOTION_COOLDOWN_FRAMES);
+         if (boostCooldownTimer <= 0) {
+             setIsBoostActive(true);
+             setBoostDurationTimer(BOOST_DURATION_FRAMES);
+             setBoostCooldownTimer(BOOST_COOLDOWN_FRAMES);
          }
       } else {
         switch(e.key) {
@@ -1004,12 +1005,12 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [slowMotionCooldownTimer]);
+  }, [boostCooldownTimer]);
 
   // Calcolo percentuale per la barra di cooldown
   const cooldownPercent = useMemo(() => {
-    return Math.max(0, 1 - (slowMotionCooldownTimer / SLOW_MOTION_COOLDOWN_FRAMES)) * 100;
-  }, [slowMotionCooldownTimer]);
+    return Math.max(0, 1 - (boostCooldownTimer / BOOST_COOLDOWN_FRAMES)) * 100;
+  }, [boostCooldownTimer]);
 
   // Ottimizziamo il rendering con un ID stabile per ogni nemico
   const enemiesWithIds = useMemo(() => {
@@ -1083,15 +1084,15 @@ function App() {
             </span>
             <div className="cooldown-bar" style={{ width: '120px', height: '15px' }}>
               <div className="cooldown-progress" style={{ 
-                width: `${isSlowMotionActive 
-                  ? `${(1 - slowMotionDurationTimer / SLOW_MOTION_DURATION_FRAMES) * 100}%` 
-                  : slowMotionCooldownTimer === 0 
+                width: `${isBoostActive 
+                  ? `${(1 - boostDurationTimer / BOOST_DURATION_FRAMES) * 100}%` 
+                  : boostCooldownTimer === 0 
                     ? '100%' 
-                    : `${(1 - slowMotionCooldownTimer / SLOW_MOTION_COOLDOWN_FRAMES) * 100}%`
+                    : `${(1 - boostCooldownTimer / BOOST_COOLDOWN_FRAMES) * 100}%`
                 }`, 
                 height: '100%', 
-                backgroundColor: isSlowMotionActive ? '#0ff' : '#0f0',
-                boxShadow: `0 0 5px ${isSlowMotionActive ? '#0ff' : '#0f0'}`
+                backgroundColor: isBoostActive ? '#0ff' : '#0f0',
+                boxShadow: `0 0 5px ${isBoostActive ? '#0ff' : '#0f0'}`
               }}></div>
             </div>
           </div>
@@ -1126,18 +1127,15 @@ function App() {
             }}></div>
           )}
           
-          {/* Utilizzo del componente Trajectory memorizzato */}
-          {isSlowMotionActive && trajectoryPoints.length > 0 && (
-            <Trajectory points={trajectoryPoints} />
-          )}
+          {/* Rimossa la traiettoria di previsione */}
           
           {/* Utilizzo del componente Enemy memorizzato per ogni nemico */}
           {enemiesWithIds.map((enemy) => (
             <Enemy key={`enemy-${enemy.id}`} enemy={enemy} />
           ))}
           
-          {/* Giocatore - senza effetto wiggle */}
-          <div className="player" style={{
+          {/* Giocatore - con effetto trail durante il boost */}
+          <div className={`player ${isBoostActive ? 'player-boost' : ''}`} style={{
             position: 'absolute',
             left: position.x - PLAYER_RADIUS,
             top: position.y - PLAYER_RADIUS,

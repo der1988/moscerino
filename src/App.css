@@ -69,6 +69,22 @@ body {
   will-change: transform, left, top;
 }
 
+/* Effetto boost per il giocatore */
+.player-boost {
+  background: #0ff;
+  box-shadow: 0 0 12px #0ff, 0 0 6px #fff;
+  animation: boost-pulse 0.3s ease-in-out infinite alternate;
+}
+
+@keyframes boost-pulse {
+  0% {
+    box-shadow: 0 0 10px #0ff, 0 0 5px #fff;
+  }
+  100% {
+    box-shadow: 0 0 15px #0ff, 0 0 8px #fff;
+  }
+}
+
 /* Miglioramento effetto nemici - ottimizzato */
 .enemy {
   border-radius: 50%;
