@@ -3,21 +3,21 @@ import './App.css'
 
 const GAME_WIDTH = 800
 const GAME_HEIGHT = 600
-const PREDICTION_FACTOR = 15 // Quanto "avanti" guardano i nemici
+const PREDICTION_FACTOR = 25 // Quanto "avanti" guardano i nemici
 const ENEMY_BASE_ACCELERATION = 0.2 // Accelerazione base nemici
 const ENEMY_FRICTION = 0.96        // Frizione nemici
-const SPEED_MULTIPLIERS = { slow: 0.7, medium: 1.0, fast: 1.3 };
-const BONUS_GUARD_RADIUS = 150 // Raggio entro cui il guardiano INIZIA ad attaccare
-const DISENGAGE_RADIUS = 300   // Raggio OLTRE cui il guardiano SMETTE di attaccare
+const SPEED_MULTIPLIERS = { slow: 0.7, medium: 0.9, fast: 1.1 };
+const BONUS_GUARD_RADIUS = 200 // Raggio entro cui il guardiano INIZIA ad attaccare
+const DISENGAGE_RADIUS = 400  // Raggio OLTRE cui il guardiano SMETTE di attaccare
 const GUARD_PATROL_RADIUS = 100 // Distanza entro cui il guardiano rallenta vicino al bonus
-const SENTINEL_AGGRO_RADIUS = 350 // Raggio inseguimento sentinelle
-const WIGGLE_AMOUNT = 1.5
-const WIGGLE_SPEED = 0.1
-const BONUS_SIZES = [6, 10, 14] // Dimensioni possibili per i bonus (piccolo, medio, grande)
-const PLAYER_RADIUS = 4
-const PLAYER_FRICTION = 0.92// Frizione del giocatore (ridotta inerzia)
-const AUTO_ATTRACTION_RADIUS = 10 // Raggio entro cui il bonus viene attratto automaticamente
-const AUTO_ATTRACTION_SPEED = 1.5 // Velocità di attrazione automatica
+const SENTINEL_AGGRO_RADIUS = 400 // Raggio inseguimento sentinelle
+const WIGGLE_AMOUNT = 1.4
+const WIGGLE_SPEED = 0.08
+const BONUS_SIZES = [8, 10, 12] // Dimensioni possibili per i bonus (piccolo, medio, grande)
+const PLAYER_RADIUS = 3
+const PLAYER_FRICTION = 0.93// Frizione del giocatore (ridotta inerzia)
+const AUTO_ATTRACTION_RADIUS = 2 // Raggio entro cui il bonus viene attratto automaticamente
+const AUTO_ATTRACTION_SPEED = 1 // Velocità di attrazione automatica
 
 // Costanti per gli ostacoli
 const OBSTACLE_SIZE = 16 // Dimensione degli ostacoli
@@ -27,7 +27,7 @@ const OBSTACLE_AVOIDANCE_RADIUS = 40 // Raggio entro cui i nemici intelligenti i
 const SLOW_MOTION_DURATION_FRAMES = 3 * 60; // 3 secondi a 60fps
 const SLOW_MOTION_COOLDOWN_FRAMES = 10 * 60; // 10 secondi a 60fps
 const SLOW_MOTION_FACTOR = 0.3; // Rallenta i nemici al 30% della velocità
-const PLAYER_SLOW_MOTION_FACTOR = 0.7; // Rallenta il giocatore al 70% (meno dei nemici)
+const PLAYER_SLOW_MOTION_FACTOR = 0.6 // Rallenta il giocatore al 70% (meno dei nemici)
 const BONUS_ATTRACTION_RADIUS = 50; // Raggio entro cui il bonus viene attratto al giocatore
 const BONUS_ATTRACTION_SPEED = 0.8; // Velocità di attrazione del bonus
 
@@ -890,7 +890,7 @@ function App() {
         overflow: 'hidden',
         position: 'relative',
         border: '1px solid black',
-        cursor: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'2\' fill=\'black\' /%3E%3C/svg%3E") 12 12, crosshair'
+        cursor: 'default'
       }}>
         {/* Ostacoli */}
         {obstacles.map((obstacle, index) => (
