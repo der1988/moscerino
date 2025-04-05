@@ -19,7 +19,7 @@ body {
   position: relative;
 }
 
-/* Effetto pioggia di codice Matrix */
+/* Effetto pioggia di codice Matrix - ottimizzato */
 .digital-rain {
   position: fixed;
   top: 0;
@@ -28,11 +28,13 @@ body {
   bottom: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.2;
+  opacity: 0.15; /* Riduzione opacità per migliorare performance */
   width: 100vw;
   height: 100vh;
   overflow: hidden;
   background-color: rgba(0,0,0,0.95);
+  /* Utilizziamo will-change per ottimizzare le performance */
+  will-change: transform;
 }
 
 .rain-column {
@@ -48,6 +50,8 @@ body {
   animation-iteration-count: infinite;
   width: 20px;
   text-align: center;
+  /* Utilizziamo will-change per ottimizzare le performance */
+  will-change: transform;
 }
 
 @keyframes rain-fall {
@@ -62,7 +66,7 @@ body {
 .rain-char {
   height: 20px;
   width: 20px;
-  transition: color 0.5s ease;
+  transition: color 1s ease; /* Transizione più lenta per meno carichi */
 }
 
 .rain-char.highlight {
@@ -101,9 +105,9 @@ body {
   right: 0;
   bottom: 0;
   background-image: 
-    linear-gradient(rgba(0, 255, 0, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 0, 0.05) 1px, transparent 1px);
-  background-size: 20px 20px;
+    linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px; /* Griglia più grande per meno linee e meno carico */
   z-index: 1;
   pointer-events: none;
 }
@@ -114,40 +118,44 @@ body {
   box-shadow: 0 0 10px #0f0, 0 0 5px #fff;
   z-index: 10;
   transform-origin: center;
+  /* Utilizziamo will-change per ottimizzare le performance */
+  will-change: transform, left, top;
 }
 
-/* Miglioramento effetto nemici */
+/* Miglioramento effetto nemici - semplificato */
 .enemy {
   border-radius: 50%;
   z-index: 5;
-  background-color: rgba(255, 0, 0, 0.4);
+  background-color: rgba(255, 0, 0, 0.7);
+  /* Utilizziamo will-change per ottimizzare le performance */
+  will-change: transform, left, top;
 }
 
 .enemy-low {
   background-color: rgba(139, 0, 0, 0.7);
-  box-shadow: 0 0 10px #8b0000, 0 0 15px #8b0000, 0 0 2px #fff;
+  box-shadow: 0 0 8px #8b0000, 0 0 12px #8b0000;
   border: 1px solid rgba(255, 0, 0, 0.6);
 }
 
 .enemy-medium {
   background-color: rgba(255, 69, 0, 0.7);
-  box-shadow: 0 0 12px #ff4500, 0 0 18px #ff4500, 0 0 3px #fff;
+  box-shadow: 0 0 10px #ff4500, 0 0 15px #ff4500;
   border: 1px solid rgba(255, 69, 0, 0.8);
 }
 
 .enemy-high {
   background-color: rgba(255, 0, 0, 0.7);
-  box-shadow: 0 0 15px #ff0000, 0 0 22px #ff0000, 0 0 5px #fff;
+  box-shadow: 0 0 12px #ff0000, 0 0 18px #ff0000;
   border: 1px solid rgba(255, 0, 0, 1);
-  animation: pulse-enemy 1.2s infinite alternate;
+  animation: pulse-enemy 2s infinite alternate; /* Rallentata l'animazione */
 }
 
 @keyframes pulse-enemy {
   0% {
-    box-shadow: 0 0 10px #ff0000, 0 0 15px #ff0000;
+    box-shadow: 0 0 8px #ff0000, 0 0 12px #ff0000;
   }
   100% {
-    box-shadow: 0 0 15px #ff0000, 0 0 25px #ff0000, 0 0 5px #fff;
+    box-shadow: 0 0 12px #ff0000, 0 0 20px #ff0000;
   }
 }
 
@@ -155,8 +163,10 @@ body {
   border-radius: 50%;
   background: linear-gradient(to right, #7fff00, #00ff00);
   box-shadow: 0 0 15px #0f0, 0 0 5px #fff;
-  animation: pulse 1.5s infinite alternate;
+  animation: pulse 2s infinite alternate; /* Rallentata l'animazione */
   z-index: 5;
+  /* Utilizziamo will-change per ottimizzare le performance */
+  will-change: transform, left, top;
 }
 
 @keyframes pulse {
@@ -164,7 +174,7 @@ body {
     box-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
   }
   100% {
-    box-shadow: 0 0 10px #0f0, 0 0 20px #0f0, 0 0 30px #0f0;
+    box-shadow: 0 0 10px #0f0, 0 0 20px #0f0;
   }
 }
 
@@ -186,7 +196,7 @@ body {
 }
 
 .cooldown-progress {
-  transition: width 0.1s linear;
+  transition: width 0.2s linear; /* Transizione più veloce */
 }
 
 .cooldown-label {
@@ -202,27 +212,16 @@ body {
   text-shadow: 0 0 5px #0f0;
 }
 
-/* Animazioni */
-@keyframes flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
-}
-
+/* Animazioni ottimizzate */
 @keyframes glitch {
   0% {
     transform: translate(0);
   }
   20% {
-    transform: translate(-1px, 1px);
-  }
-  40% {
-    transform: translate(-1px, -1px);
-  }
-  60% {
-    transform: translate(1px, 1px);
+    transform: translate(-2px, 2px);
   }
   80% {
-    transform: translate(1px, -1px);
+    transform: translate(2px, -2px);
   }
   100% {
     transform: translate(0);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import './App.css'
 
 const GAME_WIDTH = 800
@@ -11,8 +11,6 @@ const BONUS_GUARD_RADIUS = 200 // Raggio entro cui il guardiano INIZIA ad attacc
 const DISENGAGE_RADIUS = 400  // Raggio OLTRE cui il guardiano SMETTE di attaccare
 const GUARD_PATROL_RADIUS = 100 // Distanza entro cui il guardiano rallenta vicino al bonus
 const SENTINEL_AGGRO_RADIUS = 400 // Raggio inseguimento sentinelle
-const WIGGLE_AMOUNT = 1.4
-const WIGGLE_SPEED = 0.08
 const BONUS_SIZES = [8, 10, 12] // Dimensioni possibili per i bonus (piccolo, medio, grande)
 const PLAYER_RADIUS = 3
 const PLAYER_FRICTION = 0.93// Frizione del giocatore (ridotta inerzia)
@@ -191,6 +189,75 @@ const MATRIX_PATTERNS = [
   "┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐"
 ];
 
+// Componente ottimizzato per i nemici (memo per evitare re-render inutili)
+const Enemy = React.memo(({ enemy }) => {
+  return (
+    <div 
+      className={`enemy enemy-${enemy.intelligence}`} 
+      style={{
+        position: 'absolute',
+        left: enemy.x - PLAYER_RADIUS,
+        top: enemy.y - PLAYER_RADIUS,
+        width: PLAYER_RADIUS * 2,
+        height: PLAYER_RADIUS * 2
+      }}
+    />
+  );
+});
+
+// Componente ottimizzato per la traiettoria
+const Trajectory = React.memo(({ points }) => {
+  return points
+    .filter((_, index) => index % 3 === 0) // Ridotto a meno punti (filtro ogni 3 invece di ogni 2)
+    .map((point, index, filtered) => {
+      const opacity = 1 - index / filtered.length;
+      const dotColor = point.isHoming ? '#ff0000' : '#aaaaaa';
+      return (
+        <div
+          key={`trajectory-${index}`} 
+          className="trajectory-dot"
+          style={{
+            position: 'absolute',
+            left: point.x - TRAJECTORY_DOT_SIZE / 2,
+            top: point.y - TRAJECTORY_DOT_SIZE / 2,
+            width: TRAJECTORY_DOT_SIZE,
+            height: TRAJECTORY_DOT_SIZE,
+            backgroundColor: dotColor,
+            opacity: opacity
+          }}
+        />
+      );
+    });
+});
+
+// Matrix Rain ottimizzato come componente separato
+const MatrixRain = React.memo(({ columns }) => {
+  return (
+    <div className="digital-rain">
+      {columns.map(column => (
+        <div
+          key={`col-${column.id}`}
+          className="rain-column"
+          style={{
+            left: `${column.x}px`,
+            animationDuration: column.animationDuration,
+            animationDelay: column.animationDelay
+          }}
+        >
+          {column.chars.map((c, i) => (
+            <div 
+              key={`char-${column.id}-${i}`} 
+              className={`rain-char ${c.highlight ? 'highlight' : ''}`}
+            >
+              {c.char}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+});
+
 function App() {
   const [position, setPosition] = useState({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
   const [velocity, setVelocity] = useState({ x: 0, y: 0 })
@@ -339,6 +406,68 @@ function App() {
     };
   };
 
+  // Utilizzo useMemo per il calcolo della traiettoria per evitare ricalcoli inutili
+  const trajectoryPoints = useMemo(() => {
+    if (!isSlowMotionActive || (Math.abs(velocity.x) <= 0.1 && Math.abs(velocity.y) <= 0.1 && !Object.values(keys).some(v => v))) {
+      return [];
+    }
+    
+    // Resto del calcolo della traiettoria (lasciato invariato)
+    let currentX = position.x;
+    let currentY = position.y;
+    let currentVx = velocity.x;
+    let currentVy = velocity.y;
+    let totalDistance = 0;
+    const points = [];
+
+    for (let i = 0; i < TRAJECTORY_MAX_STEPS && totalDistance < TRAJECTORY_LENGTH; i++) {
+      let isHoming = false;
+      let sim_ax = 0;
+      let sim_ay = 0;
+      let sim_accel = 0.3;
+
+      if (bonusPosition && distance({ x: currentX, y: currentY }, bonusPosition) <= TRAJECTORY_HOMING_RADIUS) {
+          isHoming = true;
+          const dx_bonus = bonusPosition.x - currentX;
+          const dy_bonus = bonusPosition.y - currentY;
+          let len_bonus = Math.sqrt(dx_bonus * dx_bonus + dy_bonus * dy_bonus);
+          len_bonus = len_bonus === 0 ? 1 : len_bonus;
+          sim_ax = dx_bonus / len_bonus;
+          sim_ay = dy_bonus / len_bonus;
+          sim_accel *= TRAJECTORY_HOMING_ACCEL_FACTOR;
+      } else {
+          if (keys.up) sim_ay -= 1;
+          if (keys.down) sim_ay += 1;
+          if (keys.left) sim_ax -= 1;
+          if (keys.right) sim_ax += 1;
+          if (sim_ax !== 0 && sim_ay !== 0) {
+            const length = Math.sqrt(sim_ax * sim_ax + sim_ay * sim_ay);
+            sim_ax /= length;
+            sim_ay /= length;
+          }
+      }
+     
+      currentVx = (currentVx + sim_ax * sim_accel) * PLAYER_FRICTION; 
+      currentVy = (currentVy + sim_ay * sim_accel) * PLAYER_FRICTION;
+
+      if (Math.abs(currentVx) < 0.01 && Math.abs(currentVy) < 0.01 && sim_ax === 0 && sim_ay === 0) break;
+
+      currentX += currentVx; 
+      currentY += currentVy;
+
+      currentX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, currentX));
+      currentY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, currentY));
+
+      points.push({ x: currentX, y: currentY, isHoming });
+      const stepDist = Math.sqrt(currentVx * currentVx + currentVy * currentVy);
+      totalDistance += stepDist;
+      if(stepDist < 0.01 && sim_ax === 0 && sim_ay === 0) break; 
+    }
+    
+    return points;
+  }, [isSlowMotionActive, velocity, position, keys, bonusPosition]);
+
+  // updatePhysics ottimizzato per essere più efficiente
   const updatePhysics = useCallback(() => {
     // Determina il fattore di scala temporale
     const timeScale = isSlowMotionActive ? SLOW_MOTION_FACTOR : 1.0
@@ -359,23 +488,29 @@ function App() {
         ay_player /= length
       }
     }
+    
+    // Aggiorna velocità e posizione del giocatore in una singola operazione
     setVelocity(vel => {
       const acceleration = 0.3
-      let newVx = (vel.x + ax_player * acceleration) * PLAYER_FRICTION // Usa frizione giocatore
-      let newVy = (vel.y + ay_player * acceleration) * PLAYER_FRICTION // Usa frizione giocatore
+      let newVx = (vel.x + ax_player * acceleration) * PLAYER_FRICTION
+      let newVy = (vel.y + ay_player * acceleration) * PLAYER_FRICTION
       if (Math.abs(newVx) < 0.01) newVx = 0
       if (Math.abs(newVy) < 0.01) newVy = 0
-      return { x: newVx, y: newVy }
-    })
-    setPosition(pos => {
-      if (Math.abs(velocity.x) < 0.01 && Math.abs(velocity.y) < 0.01) return pos
-      // Applica il timeScale del giocatore alla velocità
-      let newX = pos.x + velocity.x * playerTimeScale
-      let newY = pos.y + velocity.y * playerTimeScale
-      newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX))
-      newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY))
-      return { x: newX, y: newY }
-    })
+      
+      // Aggiorna anche posizione
+      const playerVel = { x: newVx, y: newVy };
+      
+      setPosition(pos => {
+        if (Math.abs(playerVel.x) < 0.01 && Math.abs(playerVel.y) < 0.01) return pos
+        let newX = pos.x + playerVel.x * playerTimeScale
+        let newY = pos.y + playerVel.y * playerTimeScale
+        newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX))
+        newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY))
+        return { x: newX, y: newY }
+      });
+      
+      return playerVel;
+    });
     
     // --- Aggiornamento Nemici (con inerzia) --- 
     const predictedX = position.x + velocity.x * PREDICTION_FACTOR
@@ -724,7 +859,29 @@ function App() {
 
   }, [keys, velocity, position, enemies, bonusPosition, score, isSlowMotionActive, obstacles, level]) // Aggiunta dipendenze
 
+  // useEffect per game loop ottimizzato
   useEffect(() => {
+    // Utilizzo setInterval invece di requestAnimationFrame per più stabilità
+    // e per limitare gli FPS a 60 (o meno se il browser/dispositivo non può gestirli)
+    const gameLoopInterval = setInterval(() => {
+      if (isSlowMotionActive) {
+        setSlowMotionDurationTimer(t => {
+          const nextTimer = t - 1;
+          if (nextTimer <= 0) {
+            setIsSlowMotionActive(false);
+            return 0;
+          }
+          return nextTimer;
+        });
+      }
+      
+      if (slowMotionCooldownTimer > 0) {
+        setSlowMotionCooldownTimer(t => Math.max(0, t - 1));
+      }
+      
+      updatePhysics();
+    }, 16); // ~60 FPS
+    
     const handleKeyDown = (e) => {
       if (e.key === ' ' ) { // Barra spaziatrice
          e.preventDefault(); // Impedisce lo scroll della pagina
@@ -743,6 +900,7 @@ function App() {
         }
       }
     }
+    
     const handleKeyUp = (e) => {
       switch(e.key) {
         case 'ArrowUp': setKeys(prev => ({ ...prev, up: false })); break;
@@ -752,105 +910,21 @@ function App() {
         default: break;
       }
     }
-
-    let animationFrame 
-    const gameLoop = () => {
-      setFrame(f => f + 1) // Incrementa il frame count per il wiggle
-      
-      // Aggiorna Timers Slow Motion
-      if (isSlowMotionActive) {
-         setSlowMotionDurationTimer(t => {
-           const nextTimer = t - 1;
-           if (nextTimer <= 0) {
-             setIsSlowMotionActive(false); // Disattiva slow motion
-             return 0;
-           }
-           return nextTimer;
-         });
-      }
-      if (slowMotionCooldownTimer > 0) {
-         setSlowMotionCooldownTimer(t => Math.max(0, t - 1));
-      }
-      
-      updatePhysics() // Chiama SEMPRE updatePhysics
-      animationFrame = requestAnimationFrame(gameLoop)
-    }
-
+    
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
-    animationFrame = requestAnimationFrame(gameLoop)
-
+    
     return () => {
+      clearInterval(gameLoopInterval);
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
-      cancelAnimationFrame(animationFrame)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updatePhysics, isSlowMotionActive, slowMotionCooldownTimer]) // Aggiunte dipendenze per i timer
-
-  // Calcolo Wiggle per il giocatore
-  const playerWiggleX = Math.sin(frame * WIGGLE_SPEED) * WIGGLE_AMOUNT;
-  const playerWiggleY = Math.cos(frame * WIGGLE_SPEED * 0.8) * WIGGLE_AMOUNT;
+  }, [updatePhysics, isSlowMotionActive, slowMotionCooldownTimer]);
 
   // Calcolo percentuale per la barra di cooldown
-  const cooldownPercent = Math.max(0, 1 - (slowMotionCooldownTimer / SLOW_MOTION_COOLDOWN_FRAMES)) * 100;
-
-  // --- Calcolo Traiettoria (Modificato per Homing) ---
-  let trajectoryPoints = [];
-  if (isSlowMotionActive && (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.y) > 0.1 || Object.values(keys).some(v => v))) {
-      let currentX = position.x;
-      let currentY = position.y;
-      let currentVx = velocity.x;
-      let currentVy = velocity.y;
-      let totalDistance = 0;
-
-      for (let i = 0; i < TRAJECTORY_MAX_STEPS && totalDistance < TRAJECTORY_LENGTH; i++) {
-          let isHoming = false; // Flag per questo punto
-          let sim_ax = 0;
-          let sim_ay = 0;
-          let sim_accel = 0.3; // Accelerazione normale giocatore
-
-          // Controlla se siamo vicini al bonus
-          if (bonusPosition && distance({ x: currentX, y: currentY }, bonusPosition) <= TRAJECTORY_HOMING_RADIUS) {
-              isHoming = true;
-              // Calcola accelerazione verso il bonus
-              const dx_bonus = bonusPosition.x - currentX;
-              const dy_bonus = bonusPosition.y - currentY;
-              let len_bonus = Math.sqrt(dx_bonus * dx_bonus + dy_bonus * dy_bonus);
-              len_bonus = len_bonus === 0 ? 1 : len_bonus;
-              sim_ax = dx_bonus / len_bonus;
-              sim_ay = dy_bonus / len_bonus;
-              sim_accel *= TRAJECTORY_HOMING_ACCEL_FACTOR; // Applica fattore homing
-          } else {
-              // Altrimenti, usa l'accelerazione basata sui tasti
-              if (keys.up) sim_ay -= 1;
-              if (keys.down) sim_ay += 1;
-              if (keys.left) sim_ax -= 1;
-              if (keys.right) sim_ax += 1;
-              if (sim_ax !== 0 && sim_ay !== 0) {
-                const length = Math.sqrt(sim_ax * sim_ax + sim_ay * sim_ay);
-                sim_ax /= length;
-                sim_ay /= length;
-              }
-          }
-         
-          currentVx = (currentVx + sim_ax * sim_accel) * PLAYER_FRICTION; 
-          currentVy = (currentVy + sim_ay * sim_accel) * PLAYER_FRICTION;
-
-          if (Math.abs(currentVx) < 0.01 && Math.abs(currentVy) < 0.01 && sim_ax === 0 && sim_ay === 0) break;
-
-          currentX += currentVx; 
-          currentY += currentVy;
-
-          currentX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, currentX));
-          currentY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, currentY));
-
-          trajectoryPoints.push({ x: currentX, y: currentY, isHoming }); // Salva flag homing
-          const stepDist = Math.sqrt(currentVx * currentVx + currentVy * currentVy);
-          totalDistance += stepDist;
-          if(stepDist < 0.01 && sim_ax === 0 && sim_ay === 0) break; 
-      }
-  }
+  const cooldownPercent = useMemo(() => {
+    return Math.max(0, 1 - (slowMotionCooldownTimer / SLOW_MOTION_COOLDOWN_FRAMES)) * 100;
+  }, [slowMotionCooldownTimer]);
 
   // Update Matrix decorative elements
   useEffect(() => {
@@ -873,11 +947,12 @@ function App() {
   useEffect(() => {
     const columns = [];
     const screenWidth = window.innerWidth;
-    const numColumns = Math.floor(screenWidth / 20); // 20px per colonna
+    // Riduciamo il numero di colonne per migliorare le performance
+    const numColumns = Math.floor(screenWidth / 40); // 40px invece di 20px per colonna (metà colonne)
     
     for (let i = 0; i < numColumns; i++) {
       const speed = 1 + Math.random() * 3; // Velocità casuale
-      const numChars = 10 + Math.floor(Math.random() * 20); // Numero casuale di caratteri
+      const numChars = 10 + Math.floor(Math.random() * 15); // Riduciamo il numero massimo di caratteri
       const delay = Math.random() * 15; // Ritardo casuale
       const chars = [];
       
@@ -890,7 +965,7 @@ function App() {
       
       columns.push({
         id: i,
-        x: i * 20,
+        x: i * 40, // 40px invece di 20px
         speed,
         animationDuration: `${15 / speed}s`,
         animationDelay: `${delay}s`,
@@ -900,7 +975,7 @@ function App() {
     
     setRainColumns(columns);
     
-    // Aggiorna i caratteri ogni 5 secondi
+    // Aggiorna i caratteri ogni 10 secondi invece che ogni 5 per ridurre gli aggiornamenti
     const intervalId = setInterval(() => {
       setRainColumns(prev => prev.map(col => {
         return {
@@ -911,7 +986,7 @@ function App() {
           }))
         };
       }));
-    }, 5000);
+    }, 10000); // 10s invece di 5s
     
     return () => clearInterval(intervalId);
   }, []);
@@ -925,31 +1000,10 @@ function App() {
       alignItems: 'center', 
       flexDirection: 'column'
     }}>
-      {/* Effetto pioggia di codice Matrix */}
-      <div className="digital-rain">
-        {rainColumns.map(column => (
-          <div
-            key={`col-${column.id}`}
-            className="rain-column"
-            style={{
-              left: `${column.x}px`,
-              animationDuration: column.animationDuration,
-              animationDelay: column.animationDelay
-            }}
-          >
-            {column.chars.map((c, i) => (
-              <div 
-                key={`char-${column.id}-${i}`} 
-                className={`rain-char ${c.highlight ? 'highlight' : ''}`}
-              >
-                {c.char}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+      {/* Utilizzo del componente MatrixRain memorizzato */}
+      <MatrixRain columns={rainColumns} />
       
-      {/* Titolo in stile Matrix */}
+      {/* Titolo modificato */}
       <div style={{
         color: '#0f0',
         textShadow: '0 0 10px #0f0, 0 0 5px #fff',
@@ -961,7 +1015,7 @@ function App() {
         letterSpacing: '2px',
         animation: 'glitch 0.3s infinite',
       }}>
-        MATRIX MOSQUITO
+        THE CHOSEN ONE
       </div>
       
       {/* Container principale */}
@@ -1045,46 +1099,17 @@ function App() {
             }}></div>
           )}
           
-          {/* Traiettoria */}
-          {isSlowMotionActive && trajectoryPoints.length > 0 && trajectoryPoints
-            .filter((_, index) => index % 2 === 0)
-            .map((point, index, filtered) => {
-              const opacity = 1 - index / filtered.length;
-              const dotColor = point.isHoming ? '#ff0000' : '#aaaaaa';
-              return (
-                <div
-                  key={`trajectory-${index}`} 
-                  className="trajectory-dot"
-                  style={{
-                    position: 'absolute',
-                    left: point.x - TRAJECTORY_DOT_SIZE / 2,
-                    top: point.y - TRAJECTORY_DOT_SIZE / 2,
-                    width: TRAJECTORY_DOT_SIZE,
-                    height: TRAJECTORY_DOT_SIZE,
-                    backgroundColor: dotColor,
-                    opacity: opacity
-                  }}
-                />
-              );
-            })
-          }
+          {/* Utilizzo del componente Trajectory memorizzato */}
+          {isSlowMotionActive && trajectoryPoints.length > 0 && (
+            <Trajectory points={trajectoryPoints} />
+          )}
           
-          {/* Nemici */}
+          {/* Utilizzo del componente Enemy memorizzato per ogni nemico */}
           {enemies.map((enemy) => (
-            <div 
-              key={`enemy-${enemy.id}`} 
-              className={`enemy enemy-${enemy.intelligence}`} 
-              style={{
-                position: 'absolute',
-                left: enemy.x - PLAYER_RADIUS,
-                top: enemy.y - PLAYER_RADIUS,
-                width: PLAYER_RADIUS * 2,
-                height: PLAYER_RADIUS * 2
-              }}
-            ></div>
+            <Enemy key={`enemy-${enemy.id || Math.random()}`} enemy={enemy} />
           ))}
           
-          {/* Giocatore */}
+          {/* Giocatore - senza effetto wiggle */}
           <div className="player" style={{
             position: 'absolute',
             left: position.x - PLAYER_RADIUS,
@@ -1110,4 +1135,4 @@ function App() {
   )
 }
 
-export default App
+export default React.memo(App) // Memorize anche il componente principale
