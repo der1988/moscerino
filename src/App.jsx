@@ -18,8 +18,12 @@ const AUTO_ATTRACTION_RADIUS = 2 // Raggio entro cui il bonus viene attratto aut
 const AUTO_ATTRACTION_SPEED = 1 // Velocità di attrazione automatica
 
 // Costanti per gli ostacoli
-const OBSTACLE_SIZE = 16 // Dimensione degli ostacoli
+const OBSTACLE_MIN_WIDTH = 6 // Larghezza minima degli ostacoli
+const OBSTACLE_MAX_WIDTH = 30 // Larghezza massima degli ostacoli
+const OBSTACLE_MIN_HEIGHT = 6 // Altezza minima degli ostacoli
+const OBSTACLE_MAX_HEIGHT = 30 // Altezza massima degli ostacoli
 const OBSTACLE_AVOIDANCE_RADIUS = 40 // Raggio entro cui i nemici intelligenti iniziano a evitare
+const OBSTACLE_TYPES = ['rect', 'line-h', 'line-v', 'angle', 'u-shape']; // Tipi di ostacoli
 
 // Boost Mode Constants (sostituisce Slow Motion)
 const BOOST_DURATION_FRAMES = 20; // Durata boost: circa 0.3 secondi a 60fps 
@@ -251,6 +255,103 @@ const Trajectory = React.memo(({ points }) => {
   ));
 });
 
+// Componente ostacolo ottimizzato
+const Obstacle = React.memo(({ obstacle }) => {
+  // Renderizza l'ostacolo in base al suo tipo
+  switch(obstacle.type) {
+    case 'line-h':
+      return (
+        <div className="obstacle" style={{
+          position: 'absolute',
+          left: obstacle.x,
+          top: obstacle.y,
+          width: obstacle.width,
+          height: obstacle.height || 4,
+          willChange: 'transform'
+        }}></div>
+      );
+    case 'line-v':
+      return (
+        <div className="obstacle" style={{
+          position: 'absolute',
+          left: obstacle.x,
+          top: obstacle.y,
+          width: obstacle.width || 4,
+          height: obstacle.height,
+          willChange: 'transform'
+        }}></div>
+      );
+    case 'angle':
+      // Crea una forma ad L
+      return (
+        <>
+          <div className="obstacle" style={{
+            position: 'absolute',
+            left: obstacle.x,
+            top: obstacle.y,
+            width: obstacle.width || 4,
+            height: obstacle.height,
+            willChange: 'transform'
+          }}></div>
+          <div className="obstacle" style={{
+            position: 'absolute',
+            left: obstacle.x,
+            top: obstacle.y + obstacle.height - (obstacle.height > 10 ? 4 : 2),
+            width: obstacle.width2 || obstacle.width,
+            height: obstacle.height2 || 4,
+            willChange: 'transform'
+          }}></div>
+        </>
+      );
+    case 'u-shape':
+      // Crea una forma a U
+      return (
+        <>
+          <div className="obstacle" style={{
+            position: 'absolute',
+            left: obstacle.x,
+            top: obstacle.y,
+            width: obstacle.width || 4,
+            height: obstacle.height,
+            willChange: 'transform'
+          }}></div>
+          <div className="obstacle" style={{
+            position: 'absolute',
+            left: obstacle.x,
+            top: obstacle.y + obstacle.height - (obstacle.height > 10 ? 4 : 2),
+            width: obstacle.width2 || obstacle.width * 2,
+            height: obstacle.height2 || 4,
+            willChange: 'transform'
+          }}></div>
+          <div className="obstacle" style={{
+            position: 'absolute',
+            left: obstacle.x + (obstacle.width2 || obstacle.width * 2) - (obstacle.width || 4),
+            top: obstacle.y,
+            width: obstacle.width || 4,
+            height: obstacle.height,
+            willChange: 'transform'
+          }}></div>
+        </>
+      );
+    case 'rect':
+    default:
+      return (
+        <div className="obstacle" style={{
+          position: 'absolute',
+          left: obstacle.x,
+          top: obstacle.y,
+          width: obstacle.width,
+          height: obstacle.height,
+          willChange: 'transform'
+        }}></div>
+      );
+  }
+}, (prevProps, nextProps) => {
+  // Funzione di comparazione personalizzata per evitare ri-rendering non necessari
+  return prevProps.obstacle.x === nextProps.obstacle.x && 
+         prevProps.obstacle.y === nextProps.obstacle.y;
+});
+
 function App() {
   const [position, setPosition] = useState({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
   const [velocity, setVelocity] = useState({ x: 0, y: 0 })
@@ -319,16 +420,54 @@ function App() {
     size: BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)]
   })
 
-  // Funzione per generare un nuovo ostacolo in posizione non sovrapposta ad altri elementi
+  // Funzione per generare un nuovo ostacolo con forma casuale
   const generateNewObstacle = () => {
     let newObstacle;
     let isValid = false;
     
     // Tenta di generare una posizione valida (non sovrapposta)
     while (!isValid) {
+      // Scegli un tipo di ostacolo casuale
+      const type = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+      
+      // Genera dimensioni in base al tipo
+      let width, height, width2, height2;
+      
+      switch(type) {
+        case 'line-h':
+          width = Math.floor(Math.random() * 80) + 30; // Linea orizzontale lunga
+          height = 4; // Sottile
+          break;
+        case 'line-v':
+          width = 4; // Sottile
+          height = Math.floor(Math.random() * 80) + 30; // Linea verticale lunga
+          break;
+        case 'angle':
+          width = 4; // Linea verticale
+          height = Math.floor(Math.random() * 40) + 20;
+          width2 = Math.floor(Math.random() * 60) + 20; // Linea orizzontale
+          height2 = 4;
+          break;
+        case 'u-shape':
+          width = 4; // Linee verticali
+          height = Math.floor(Math.random() * 40) + 20;
+          width2 = Math.floor(Math.random() * 60) + 30; // Larghezza totale della U
+          height2 = 4; // Altezza della base della U
+          break;
+        case 'rect':
+        default:
+          width = Math.floor(Math.random() * (OBSTACLE_MAX_WIDTH - OBSTACLE_MIN_WIDTH)) + OBSTACLE_MIN_WIDTH;
+          height = Math.floor(Math.random() * (OBSTACLE_MAX_HEIGHT - OBSTACLE_MIN_HEIGHT)) + OBSTACLE_MIN_HEIGHT;
+      }
+      
       newObstacle = {
-        x: Math.random() * (GAME_WIDTH - OBSTACLE_SIZE - 20) + 10,
-        y: Math.random() * (GAME_HEIGHT - OBSTACLE_SIZE - 20) + 10
+        x: Math.random() * (GAME_WIDTH - width - 20) + 10,
+        y: Math.random() * (GAME_HEIGHT - height - 20) + 10,
+        width,
+        height,
+        width2,
+        height2,
+        type
       };
       
       isValid = true;
@@ -347,10 +486,14 @@ function App() {
       
       // Controlla sovrapposizione con altri ostacoli
       for (const obstacle of obstacles) {
-        if (
-          Math.abs(obstacle.x - newObstacle.x) < OBSTACLE_SIZE * 1.5 && 
-          Math.abs(obstacle.y - newObstacle.y) < OBSTACLE_SIZE * 1.5
-        ) {
+        // Calcola la distanza approssimativa tra ostacoli
+        const centerDist = Math.sqrt(
+          Math.pow((obstacle.x + obstacle.width/2) - (newObstacle.x + newObstacle.width/2), 2) +
+          Math.pow((obstacle.y + obstacle.height/2) - (newObstacle.y + newObstacle.height/2), 2)
+        );
+        const minDist = (obstacle.width + obstacle.height + newObstacle.width + newObstacle.height) / 4;
+        
+        if (centerDist < minDist) {
           isValid = false;
           break;
         }
@@ -406,12 +549,58 @@ function App() {
 
   // Controlla se un punto è dentro un ostacolo
   const isPointInObstacle = (point, obstacle) => {
-    return (
-      point.x >= obstacle.x - OBSTACLE_SIZE/2 && 
-      point.x <= obstacle.x + OBSTACLE_SIZE/2 &&
-      point.y >= obstacle.y - OBSTACLE_SIZE/2 && 
-      point.y <= obstacle.y + OBSTACLE_SIZE/2
-    );
+    switch(obstacle.type) {
+      case 'line-h':
+        return (
+          point.x >= obstacle.x && 
+          point.x <= obstacle.x + obstacle.width &&
+          point.y >= obstacle.y - 2 && 
+          point.y <= obstacle.y + (obstacle.height || 4) + 2
+        );
+      case 'line-v':
+        return (
+          point.x >= obstacle.x - 2 && 
+          point.x <= obstacle.x + (obstacle.width || 4) + 2 &&
+          point.y >= obstacle.y && 
+          point.y <= obstacle.y + obstacle.height
+        );
+      case 'angle':
+        // Controlla collisione con entrambe le parti della L
+        return (
+          (point.x >= obstacle.x - 2 && 
+           point.x <= obstacle.x + (obstacle.width || 4) + 2 &&
+           point.y >= obstacle.y && 
+           point.y <= obstacle.y + obstacle.height) ||
+          (point.x >= obstacle.x && 
+           point.x <= obstacle.x + (obstacle.width2 || obstacle.width) &&
+           point.y >= obstacle.y + obstacle.height - (obstacle.height > 10 ? 4 : 2) - 2 && 
+           point.y <= obstacle.y + obstacle.height + 2)
+        );
+      case 'u-shape':
+        // Controlla collisione con tutte e tre le parti della U
+        return (
+          (point.x >= obstacle.x - 2 && 
+           point.x <= obstacle.x + (obstacle.width || 4) + 2 &&
+           point.y >= obstacle.y && 
+           point.y <= obstacle.y + obstacle.height) ||
+          (point.x >= obstacle.x && 
+           point.x <= obstacle.x + (obstacle.width2 || obstacle.width * 2) &&
+           point.y >= obstacle.y + obstacle.height - (obstacle.height > 10 ? 4 : 2) - 2 && 
+           point.y <= obstacle.y + obstacle.height + 2) ||
+          (point.x >= obstacle.x + (obstacle.width2 || obstacle.width * 2) - (obstacle.width || 4) - 2 && 
+           point.x <= obstacle.x + (obstacle.width2 || obstacle.width * 2) + 2 &&
+           point.y >= obstacle.y && 
+           point.y <= obstacle.y + obstacle.height)
+        );
+      case 'rect':
+      default:
+        return (
+          point.x >= obstacle.x && 
+          point.x <= obstacle.x + obstacle.width &&
+          point.y >= obstacle.y && 
+          point.y <= obstacle.y + obstacle.height
+        );
+    }
   };
 
   // Calcola vettore di evitamento per un ostacolo
@@ -921,6 +1110,9 @@ function App() {
           });
           
           setBonusPosition(generateNewBonus());
+          
+          // Resetta il cooldown del boost - MATRIX MODE si ricarica al 100%
+          setBoostCooldownTimer(0);
         }
       }
       
@@ -1020,6 +1212,16 @@ function App() {
     }));
   }, [enemies]);
 
+  // Calcola il colore della barra di Matrix Mode in base allo stato
+  const matrixModeColor = useMemo(() => {
+    // Se è attivo il boost, usa il colore ciano
+    if (isBoostActive) return '#0ff';
+    // Se il cooldown è a 0 (completamente carico), usa il blu
+    if (boostCooldownTimer === 0) return '#0ff';
+    // Altrimenti usa il verde
+    return '#0f0';
+  }, [isBoostActive, boostCooldownTimer]);
+
   return (
     <div style={{ 
       width: '100%', 
@@ -1091,8 +1293,8 @@ function App() {
                     : `${(1 - boostCooldownTimer / BOOST_COOLDOWN_FRAMES) * 100}%`
                 }`, 
                 height: '100%', 
-                backgroundColor: isBoostActive ? '#0ff' : '#0f0',
-                boxShadow: `0 0 5px ${isBoostActive ? '#0ff' : '#0f0'}`
+                backgroundColor: matrixModeColor,
+                boxShadow: `0 0 5px ${matrixModeColor}`
               }}></div>
             </div>
           </div>
@@ -1104,15 +1306,8 @@ function App() {
           <div className="grid-background"></div>
           
           {/* Ostacoli */}
-          {obstacles.map((obs, i) => (
-            <div key={`obstacle-${i}`} className="obstacle" style={{
-              position: 'absolute',
-              left: obs.x,
-              top: obs.y,
-              width: obs.width || OBSTACLE_SIZE,
-              height: obs.height || OBSTACLE_SIZE,
-              willChange: 'transform'
-            }}></div>
+          {obstacles.map((obstacle, i) => (
+            <Obstacle key={`obstacle-${i}`} obstacle={obstacle} />
           ))}
           
           {/* Bonus */}
