@@ -369,21 +369,21 @@ function App() {
           // Se il nemico vede il giocatore, lo insegue
           targetX = newX;
           targetY = newY;
-        } else if (enemy.role === 'guard') {
-          // Il guardiano pattuglia intorno al bonus
+        } else if (enemy.role === 'guard' && bonusPosition) {
+          // Il guardiano pattuglia intorno al bonus solo se bonusPosition esiste
           const angle = (Date.now() / 1000) % (2 * Math.PI); // Rotazione nel tempo
           const patrolRadius = 50;
           targetX = bonusPosition.x + Math.cos(angle) * patrolRadius;
           targetY = bonusPosition.y + Math.sin(angle) * patrolRadius;
         } else {
-          // Il pattugliatore cerca un punto casuale
+          // Il pattugliatore cerca un punto casuale o il guardiano senza bonus resta fermo
           if (!enemy.patrolTarget || distance(enemy, enemy.patrolTarget) < 20) {
             // Genera un nuovo punto di pattuglia
             const newTarget = getRandomPatrolPoint(walls);
             enemy = { ...enemy, patrolTarget: newTarget };
           }
-          targetX = enemy.patrolTarget.x;
-          targetY = enemy.patrolTarget.y;
+          targetX = enemy.patrolTarget ? enemy.patrolTarget.x : enemy.x;
+          targetY = enemy.patrolTarget ? enemy.patrolTarget.y : enemy.y;
         }
         
         // Calcola la direzione verso il target
