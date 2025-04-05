@@ -1,68 +1,190 @@
+@font-face {
+  font-family: 'Matrix';
+  src: url('https://fonts.cdnfonts.com/css/matrix') format('woff2');
+}
+
+body {
+  margin: 0;
+  background-color: #000;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+  color: #0f0;
+}
+
 #root {
   margin: 0 auto;
   padding: 0;
   text-align: center;
+  background-color: #000;
+  position: relative;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* Effetto pioggia di codice Matrix */
+.digital-rain {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.15;
+  background: linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.3)), 
+              url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="4000"><text y="20" fill="%2300ff00">01010101010101010101110101010101010101010101110101010101010101011101010101010101</text><text y="40" fill="%2300ff00">11010100111010101110101010010101010111001010101010111010101010101010111101010101</text><text y="60" fill="%2300ff00">10101010101110101010101010101010101110101010101010101011101010101010101010101110</text><text y="80" fill="%2300ff00">10101001110101011101010100101010101110010101010101110101010101010101111010101010</text><text y="100" fill="%2300ff00">01010101010101010101110101010101010101010101110101010101010101011101010101010101</text><text y="120" fill="%2300ff00">11010100111010101110101010010101010111001010101010111010101010101010111101010101</text><text y="140" fill="%2300ff00">10101010101110101010101010101010101110101010101010101011101010101010101010101110</text><text y="160" fill="%2300ff00">01010101010101010101110101010101010101010101110101010101010101011101010101010101</text><text y="180" fill="%2300ff00">11010100111010101110101010010101010111001010101010111010101010101010111101010101</text><text y="200" fill="%2300ff00">10101010101110101010101010101010101110101010101010101011101010101010101010101110</text></svg>');
+  background-size: auto;
+  animation: rain 20s linear infinite;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+@keyframes rain {
+  0% {
+    background-position: 0 0;
   }
-  to {
-    transform: rotate(360deg);
+  100% {
+    background-position: 0 1000px;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.game-container {
+  position: relative;
+  z-index: 1;
+  border-radius: 5px;
+  box-shadow: 0 0 30px #0f0;
+  overflow: hidden;
 }
 
-.card {
-  padding: 2em;
+.ui-bar {
+  background: rgba(0, 20, 0, 0.8);
+  border: 1px solid #0f0;
+  border-radius: 5px 5px 0 0;
+  box-shadow: 0 0 10px #0f0 inset;
+  text-shadow: 0 0 5px #0f0;
 }
 
-.read-the-docs {
-  color: #888;
+.game-area {
+  position: relative;
+  background: rgba(0, 5, 0, 0.9);
+  border: 1px solid #0f0;
+  overflow: hidden;
+  box-shadow: 0 0 5px #0f0 inset;
 }
 
-#score {
+.grid-background {
   position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 24px;
-  font-weight: bold;
-  color: black;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(rgba(0, 255, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 0, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.player {
+  border-radius: 50%;
+  background: #0f0;
+  box-shadow: 0 0 10px #0f0, 0 0 5px #fff;
   z-index: 10;
+  transform-origin: center;
+}
+
+.enemy {
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+  z-index: 5;
+}
+
+.enemy-low {
+  color: #8b0000;
+  box-shadow: 0 0 5px currentColor;
+}
+
+.enemy-medium {
+  color: #ff4500;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.enemy-high {
+  color: #ff0000;
+  box-shadow: 0 0 12px currentColor, 0 0 4px #fff;
 }
 
 .bonus {
-  width: 6px;
-  height: 6px;
-  background-color: black;
-  position: absolute;
+  border-radius: 50%;
+  background: linear-gradient(to right, #7fff00, #00ff00);
+  box-shadow: 0 0 15px #0f0, 0 0 5px #fff;
+  animation: pulse 1.5s infinite alternate;
   z-index: 5;
 }
 
-.bullet {
-  width: 4px;
-  height: 4px;
-  background-color: red;
-  position: absolute;
-  z-index: 5;
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+  }
+  100% {
+    box-shadow: 0 0 10px #0f0, 0 0 20px #0f0, 0 0 30px #0f0;
+  }
+}
+
+.obstacle {
+  background: rgba(255, 0, 0, 0.7);
+  box-shadow: 0 0 10px red, 0 0 5px #fff;
+  z-index: 4;
+}
+
+.trajectory-dot {
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.cooldown-bar {
+  border: 1px solid #0f0;
+  background-color: rgba(0, 20, 0, 0.5);
+}
+
+.cooldown-progress {
+  transition: width 0.1s linear;
+}
+
+.cooldown-label {
+  text-shadow: 0 0 5px #0f0;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.info-text {
+  color: #0f0;
+  font-weight: bold;
+  text-shadow: 0 0 5px #0f0;
+}
+
+/* Animazioni */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes glitch {
+  0% {
+    transform: translate(0);
+  }
+  20% {
+    transform: translate(-1px, 1px);
+  }
+  40% {
+    transform: translate(-1px, -1px);
+  }
+  60% {
+    transform: translate(1px, 1px);
+  }
+  80% {
+    transform: translate(1px, -1px);
+  }
+  100% {
+    transform: translate(0);
+  }
 }

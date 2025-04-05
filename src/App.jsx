@@ -168,6 +168,26 @@ const resolveCollision = (enemy1, enemy2) => {
   };
 };
 
+// Matrix random characters for decorative elements
+const getMatrixChar = () => {
+  const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+  return chars.charAt(Math.floor(Math.random() * chars.length));
+};
+
+// Random Matrix ID for decorative elements
+const generateMatrixID = () => {
+  return Array(8).fill().map(() => Math.floor(Math.random() * 10)).join('');
+};
+
+// Random Matrix ASCII patterns
+const MATRIX_PATTERNS = [
+  "=-=-=-=-=-=-=-=-=-=-=-=-=-=",
+  "[][][][][][][][][][][][][]",
+  "::::::::::::::::::::::::::::",
+  "▓▒░▒▓▒░▒▓▒░▒▓▒░▒▓▒░▒▓▒░▒▓▒░",
+  "┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐"
+];
+
 function App() {
   const [position, setPosition] = useState({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
   const [velocity, setVelocity] = useState({ x: 0, y: 0 })
@@ -185,6 +205,10 @@ function App() {
   const [level, setLevel] = useState(1)
   // Stato per l'high score
   const [highScore, setHighScore] = useState(0)
+  
+  // Matrix decoration states
+  const [matrixPattern, setMatrixPattern] = useState(MATRIX_PATTERNS[0]);
+  const [matrixID, setMatrixID] = useState(generateMatrixID());
 
   // Funzione per generare una nuova posizione e dimensione del bonus
   const generateNewBonus = () => ({
@@ -259,6 +283,11 @@ function App() {
       setHighScore(score);
     }
     
+    // Matrix reset effect - cambia pattern e ID
+    setMatrixPattern(MATRIX_PATTERNS[Math.floor(Math.random() * MATRIX_PATTERNS.length)]);
+    setMatrixID(generateMatrixID());
+    
+    // Reset del gioco
     setPosition({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
     setEnemies([createEnemy()]) // Usa la funzione createEnemy
     setBonusPosition(generateNewBonus()) // Rigenera bonus al reset
@@ -812,181 +841,240 @@ function App() {
       }
   }
 
+  // Update Matrix decorative elements
+  useEffect(() => {
+    const patternInterval = setInterval(() => {
+      const newPattern = MATRIX_PATTERNS[Math.floor(Math.random() * MATRIX_PATTERNS.length)];
+      setMatrixPattern(newPattern);
+    }, 5000);
+    
+    const idInterval = setInterval(() => {
+      setMatrixID(generateMatrixID());
+    }, 3000);
+    
+    return () => {
+      clearInterval(patternInterval);
+      clearInterval(idInterval);
+    };
+  }, []);
+
   return (
     <div style={{
       maxWidth: `${GAME_WIDTH}px`,
       margin: '0 auto',
-      fontFamily: 'Arial, sans-serif'
+      fontFamily: 'Courier New, monospace'
     }}>
-      {/* Barra UI superiore */}
+      {/* Effetto pioggia di codice Matrix */}
+      <div className="digital-rain"></div>
+      
+      {/* Titolo in stile Matrix */}
       <div style={{
+        padding: '5px', 
+        color: '#0f0',
+        textShadow: '0 0 5px #0f0',
+        fontSize: '12px',
+        textAlign: 'center'
+      }}>
+        <div style={{animation: 'glitch 1s infinite'}}>{matrixPattern}</div>
+        <div style={{letterSpacing: '1px'}}>THE MATRIX // OPERAZIONE MOSCERINO // ID:{matrixID}</div>
+        <div>{matrixPattern}</div>
+      </div>
+      
+      {/* Barra UI superiore */}
+      <div className="ui-bar" style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '10px 15px',
-        backgroundColor: '#f0f0f0',
-        borderRadius: '8px 8px 0 0',
-        border: '1px solid #333',
-        borderBottom: 'none'
+        padding: '10px 15px'
       }}>
-        {/* Indicatori di gioco (livello, punti, record) */}
+        {/* Indicatori di gioco con stile Matrix */}
         <div style={{
           display: 'flex',
           gap: '20px',
           fontSize: '16px',
           fontWeight: 'bold'
         }}>
-          <span>Livello: {level}</span>
-          <span>Punti: {score}</span>
-          <span>Record: {highScore}</span>
+          <span className="info-text">LEVEL::{level}</span>
+          <span className="info-text">SCORE::{score}</span>
+          <span className="info-text">BEST::{highScore}</span>
         </div>
         
         {/* Barra Slow Motion */}
         <div style={{ textAlign: 'right' }}>
-          <div style={{ 
+          <div className="cooldown-bar" style={{ 
             width: '100px', 
             height: '20px', 
-            border: '1px solid black', 
-            backgroundColor: '#eee',
             display: 'inline-block',
             position: 'relative'
           }}>
-            <div style={{ 
+            <div className="cooldown-progress" style={{ 
               width: `${cooldownPercent}%`, 
               height: '100%', 
-              backgroundColor: isSlowMotionActive ? 'lightblue' : (slowMotionCooldownTimer <= 0 ? 'lime' : 'orange'), 
-              transition: isSlowMotionActive ? 'none' : 'width 0.1s linear' 
+              backgroundColor: isSlowMotionActive ? '#00FFFF' : (slowMotionCooldownTimer <= 0 ? '#00FF00' : '#00AA00')
             }} />
-            <span style={{ 
+            <span className="cooldown-label" style={{ 
               position: 'absolute', 
               left: '50%', 
               top: '50%', 
               transform: 'translate(-50%, -50%)', 
-              fontSize: '12px', 
-              color: 'white',
-              pointerEvents: 'none',
-              textShadow: '1px 1px 1px rgba(0,0,0,0.7)'
+              fontSize: '12px',
+              pointerEvents: 'none'
             }}>
-              Slowmotion
+              {isSlowMotionActive ? "MATRIX MODE" : "MATRIX"}
             </span>
           </div>
           <div style={{ 
             fontSize: '10px', 
-            color: 'black',
+            color: '#0f0',
             marginTop: '2px',
             width: '100px',
             textAlign: 'center'
           }}>
-            Press Spacebar
+            [ SPACEBAR ]
           </div>
         </div>
       </div>
       
       {/* Area di gioco */}
-      <div style={{
+      <div className="game-area" style={{
         width: `${GAME_WIDTH}px`,
-        height: `${GAME_HEIGHT}px`,
-        backgroundColor: 'white',
-        overflow: 'hidden',
-        position: 'relative',
-        border: '1px solid black',
-        cursor: 'default'
+        height: `${GAME_HEIGHT}px`
       }}>
+        {/* Griglia di sfondo in stile Matrix */}
+        <div className="grid-background"></div>
+        
+        {/* Codice Matrix decorativo sullo sfondo */}
+        <div style={{
+          position: 'absolute',
+          top: '10px',
+          left: '10px',
+          fontSize: '10px',
+          color: 'rgba(0, 255, 0, 0.2)',
+          zIndex: 2,
+          pointerEvents: 'none',
+          textAlign: 'left',
+          width: '200px'
+        }}>
+          {Array(10).fill().map((_, i) => (
+            <div key={`matrix-code-${i}`}>
+              {Array(20).fill().map((_, j) => getMatrixChar()).join('')}
+            </div>
+          ))}
+        </div>
+        
+        <div style={{
+          position: 'absolute',
+          bottom: '10px',
+          right: '10px',
+          fontSize: '10px',
+          color: 'rgba(0, 255, 0, 0.2)',
+          zIndex: 2,
+          pointerEvents: 'none',
+          textAlign: 'right',
+          width: '200px'
+        }}>
+          {Array(10).fill().map((_, i) => (
+            <div key={`matrix-code2-${i}`}>
+              {Array(20).fill().map((_, j) => getMatrixChar()).join('')}
+            </div>
+          ))}
+        </div>
+        
         {/* Ostacoli */}
         {obstacles.map((obstacle, index) => (
-          <div key={`obstacle-${index}`} style={{
+          <div key={`obstacle-${index}`} className="obstacle" style={{
             position: 'absolute',
             width: `${OBSTACLE_SIZE}px`,
             height: `${OBSTACLE_SIZE}px`,
-            backgroundColor: 'red',
             left: `${obstacle.x - OBSTACLE_SIZE/2}px`,
-            top: `${obstacle.y - OBSTACLE_SIZE/2}px`,
-            zIndex: 4
+            top: `${obstacle.y - OBSTACLE_SIZE/2}px`
           }} />
         ))}
         
-        {/* Moscerino */}
-        <div style={{
-          width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: 'black',
-          borderRadius: '50%', position: 'absolute',
+        {/* Moscerino (Player) */}
+        <div className="player" style={{
+          width: `${PLAYER_RADIUS * 2}px`, 
+          height: `${PLAYER_RADIUS * 2}px`,
+          position: 'absolute',
           left: `${position.x - PLAYER_RADIUS + playerWiggleX}px`,
           top: `${position.y - PLAYER_RADIUS + playerWiggleY}px`,
-          transform: 'translate3d(0,0,0)', willChange: 'left, top',
-          zIndex: 10
+          willChange: 'left, top',
+          animation: 'flicker 1.5s ease-in-out infinite'
         }} />
+        
+        {/* Nemici */}
         {enemies.map((enemy, index) => {
           const enemyWiggleX = Math.sin(frame * WIGGLE_SPEED * 0.9 + index * 0.5) * WIGGLE_AMOUNT * 0.8;
           const enemyWiggleY = Math.cos(frame * WIGGLE_SPEED * 0.7 + index * 0.6) * WIGGLE_AMOUNT * 0.8;
           
-          // Determina colore in base alla velocità e intelligenza
-          let enemyColor = 'orange'; // Default medio
+          // Determina classe in base all'intelligenza
+          let enemyClass = "enemy enemy-medium";
           
-          if (enemy.speedMultiplier < SPEED_MULTIPLIERS.medium) {
-              enemyColor = 'gold'; // Più lento
-          } else if (enemy.speedMultiplier > SPEED_MULTIPLIERS.medium) {
-              enemyColor = 'red'; // Più veloce
-          }
-          
-          // Modificatore del colore in base all'intelligenza
           if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
-              // Rendi il colore più scuro per nemici intelligenti
-              if (enemyColor === 'gold') enemyColor = 'goldenrod';
-              else if (enemyColor === 'orange') enemyColor = 'darkorange';
-              else if (enemyColor === 'red') enemyColor = 'darkred';
+              enemyClass = "enemy enemy-high";
           } else if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
-              // Rendi il colore più chiaro per nemici poco intelligenti
-              if (enemyColor === 'gold') enemyColor = 'palegoldenrod';
-              else if (enemyColor === 'orange') enemyColor = 'peachpuff';
-              else if (enemyColor === 'red') enemyColor = 'salmon';
+              enemyClass = "enemy enemy-low";
           }
           
           return (
-            <div key={index} style={{
-              width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: enemyColor, // Usa colore dinamico
-              borderRadius: '50%', position: 'absolute',
+            <div key={index} className={enemyClass} style={{
+              width: `${PLAYER_RADIUS * 2}px`, 
+              height: `${PLAYER_RADIUS * 2}px`,
+              position: 'absolute',
               left: `${enemy.x - PLAYER_RADIUS + enemyWiggleX}px`,
               top: `${enemy.y - PLAYER_RADIUS + enemyWiggleY}px`,
-              transform: 'translate3d(0,0,0)', willChange: 'left, top',
-              zIndex: 5
+              willChange: 'left, top'
             }} />
           );
         })}
+        
+        {/* Bonus */}
         {bonusPosition && (
           <div className="bonus" style={{
-            width: `${bonusPosition.size}px`, // Usa dimensione dallo stato
-            height: `${bonusPosition.size}px`, // Usa dimensione dallo stato
-            left: `${bonusPosition.x - bonusPosition.size / 2}px`, // Centra in base alla dimensione
-            top: `${bonusPosition.y - bonusPosition.size / 2}px`, // Centra in base alla dimensione
-            zIndex: 5
+            width: `${bonusPosition.size}px`,
+            height: `${bonusPosition.size}px`,
+            position: 'absolute',
+            left: `${bonusPosition.x - bonusPosition.size / 2}px`,
+            top: `${bonusPosition.y - bonusPosition.size / 2}px`
           }} />
         )}
+        
         {/* Traiettoria */}
         {isSlowMotionActive && trajectoryPoints.length > 0 && (
             trajectoryPoints
                 .filter((_, index) => index % TRAJECTORY_DASH_SKIP === 0) 
                 .map((point, index, filteredArray) => {
-                    const opacity = 0.8 * (1 - (index / (filteredArray.length || 1))); // Fade da 0.8 a 0
+                    const opacity = 0.8 * (1 - (index / (filteredArray.length || 1)));
                     const dotColor = point.isHoming 
-                                    ? `rgba(255, 0, 0, ${opacity})` // Rosso se homing
-                                    : `rgba(100, 100, 100, ${opacity})`; // Grigio altrimenti
+                                    ? `rgba(0, 255, 255, ${opacity})` // Ciano se homing
+                                    : `rgba(0, 255, 0, ${opacity})`; // Verde altrimenti
                     return (
                         <div
                             key={`traj-${index}`}
+                            className="trajectory-dot"
                             style={{
                                 position: 'absolute',
                                 width: `${TRAJECTORY_DOT_SIZE * 2}px`,
                                 height: `${TRAJECTORY_DOT_SIZE * 2}px`,
-                                backgroundColor: dotColor, // Usa colore calcolato
-                                borderRadius: '50%',
+                                backgroundColor: dotColor,
                                 left: `${point.x - TRAJECTORY_DOT_SIZE}px`,
                                 top: `${point.y - TRAJECTORY_DOT_SIZE}px`,
-                                zIndex: 3, 
-                                pointerEvents: 'none',
+                                boxShadow: point.isHoming ? `0 0 5px #0ff` : `0 0 5px #0f0`
                             }}
                         />
                     );
                 })
         )}
+      </div>
+      
+      {/* Messaggi a piede pagina */}
+      <div style={{
+        fontSize: '10px',
+        color: '#0f0',
+        padding: '5px 0',
+        textAlign: 'center'
+      }}>
+        <span>[MATRIX SYS]: NEO :: FOLLOW THE WHITE RABBIT :: {matrixID}</span>
       </div>
     </div>
   )
