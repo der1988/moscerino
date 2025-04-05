@@ -230,34 +230,6 @@ const Trajectory = React.memo(({ points }) => {
     });
 });
 
-// Matrix Rain ottimizzato come componente separato
-const MatrixRain = React.memo(({ columns }) => {
-  return (
-    <div className="digital-rain">
-      {columns.map(column => (
-        <div
-          key={`col-${column.id}`}
-          className="rain-column"
-          style={{
-            left: `${column.x}px`,
-            animationDuration: column.animationDuration,
-            animationDelay: column.animationDelay
-          }}
-        >
-          {column.chars.map((c, i) => (
-            <div 
-              key={`char-${column.id}-${i}`} 
-              className={`rain-char ${c.highlight ? 'highlight' : ''}`}
-            >
-              {c.char}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-});
-
 function App() {
   const [position, setPosition] = useState({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
   const [velocity, setVelocity] = useState({ x: 0, y: 0 })
@@ -285,9 +257,6 @@ function App() {
   const previousTimeRef = useRef();
   const lastBonusTimeRef = useRef(0);
   
-  // Stato per i caratteri della pioggia Matrix
-  const [rainColumns, setRainColumns] = useState([]);
-
   // Funzione per generare una nuova posizione e dimensione del bonus
   const generateNewBonus = () => ({
     x: Math.random() * (GAME_WIDTH - 20) + 10, // Evita spawn troppo vicino ai bordi
@@ -943,54 +912,6 @@ function App() {
     };
   }, []);
 
-  // Genera colonne di pioggia Matrix
-  useEffect(() => {
-    const columns = [];
-    const screenWidth = window.innerWidth;
-    // Riduciamo il numero di colonne per migliorare le performance
-    const numColumns = Math.floor(screenWidth / 40); // 40px invece di 20px per colonna (metà colonne)
-    
-    for (let i = 0; i < numColumns; i++) {
-      const speed = 1 + Math.random() * 3; // Velocità casuale
-      const numChars = 10 + Math.floor(Math.random() * 15); // Riduciamo il numero massimo di caratteri
-      const delay = Math.random() * 15; // Ritardo casuale
-      const chars = [];
-      
-      for (let j = 0; j < numChars; j++) {
-        chars.push({
-          char: MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)],
-          highlight: Math.random() < 0.1 // 10% di probabilità di essere evidenziato
-        });
-      }
-      
-      columns.push({
-        id: i,
-        x: i * 40, // 40px invece di 20px
-        speed,
-        animationDuration: `${15 / speed}s`,
-        animationDelay: `${delay}s`,
-        chars
-      });
-    }
-    
-    setRainColumns(columns);
-    
-    // Aggiorna i caratteri ogni 10 secondi invece che ogni 5 per ridurre gli aggiornamenti
-    const intervalId = setInterval(() => {
-      setRainColumns(prev => prev.map(col => {
-        return {
-          ...col,
-          chars: col.chars.map(c => ({
-            char: MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)],
-            highlight: Math.random() < 0.1
-          }))
-        };
-      }));
-    }, 10000); // 10s invece di 5s
-    
-    return () => clearInterval(intervalId);
-  }, []);
-
   return (
     <div style={{ 
       width: '100%', 
@@ -998,12 +919,10 @@ function App() {
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center', 
-      flexDirection: 'column'
+      flexDirection: 'column',
+      backgroundColor: '#000' // Sfondo nero senza effetti
     }}>
-      {/* Utilizzo del componente MatrixRain memorizzato */}
-      <MatrixRain columns={rainColumns} />
-      
-      {/* Titolo modificato */}
+      {/* Titolo */}
       <div style={{
         color: '#0f0',
         textShadow: '0 0 10px #0f0, 0 0 5px #fff',
@@ -1118,18 +1037,6 @@ function App() {
             height: PLAYER_RADIUS * 2
           }}></div>
         </div>
-      </div>
-      
-      {/* Messaggio in stile Matrix */}
-      <div style={{
-        color: '#0f0',
-        fontSize: '12px',
-        marginTop: '10px',
-        fontFamily: 'monospace',
-        textShadow: '0 0 5px #0f0',
-        zIndex: 2
-      }}>
-        FOLLOW THE WHITE RABBIT
       </div>
     </div>
   )
