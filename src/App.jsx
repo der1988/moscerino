@@ -15,7 +15,7 @@ const WIGGLE_AMOUNT = 1.5
 const WIGGLE_SPEED = 0.1
 const BONUS_SIZES = [6, 10, 14] // Dimensioni possibili per i bonus (piccolo, medio, grande)
 const PLAYER_RADIUS = 4
-const PLAYER_FRICTION = 0.97 // Frizione del giocatore (usata per traiettoria)
+const PLAYER_FRICTION = 0.92// Frizione del giocatore (ridotta inerzia)
 const AUTO_ATTRACTION_RADIUS = 10 // Raggio entro cui il bonus viene attratto automaticamente
 const AUTO_ATTRACTION_SPEED = 1.5 // Velocità di attrazione automatica
 
@@ -35,7 +35,7 @@ const BONUS_ATTRACTION_SPEED = 0.8; // Velocità di attrazione del bonus
 const TRAJECTORY_LENGTH = 100;       // Lunghezza max della previsione in px
 const TRAJECTORY_MAX_STEPS = 60;     // Numero max di passi per evitare loop infiniti
 const TRAJECTORY_DASH_SKIP = 3;      // Renderizza un punto ogni N passi
-const TRAJECTORY_DOT_SIZE = 2;       // Raggio dei punti della traiettoria
+const TRAJECTORY_DOT_SIZE = 2.5;       // Raggio dei punti della traiettoria
 const TRAJECTORY_HOMING_RADIUS = 200; // Raggio entro cui la traiettoria si aggancia al bonus
 const TRAJECTORY_HOMING_ACCEL_FACTOR = 1.5; // Moltiplicatore accelerazione verso bonus
 
@@ -81,6 +81,54 @@ const createEnemy = () => {
     speedMultiplier: SPEED_MULTIPLIERS[randomSpeedKey], // Assegna moltiplicatore velocità
     intelligence: INTELLIGENCE_LEVELS[randomIntelligenceKey] // Assegna livello di intelligenza
   };
+};
+
+// Funzione per creare un nemico lontano dal giocatore
+const createEnemyAwayFromPlayer = (playerPosition) => {
+  const MIN_DISTANCE = 200; // Distanza minima dal giocatore
+  
+  // Genera proprietà base del nemico
+  const enemy = createEnemy();
+  
+  // Riposiziona il nemico fino a quando non è abbastanza lontano
+  let attempts = 0;
+  let validPosition = false;
+  
+  while (!validPosition && attempts < 50) {
+    // Genera una posizione casuale
+    enemy.x = Math.random() * GAME_WIDTH;
+    enemy.y = Math.random() * GAME_HEIGHT;
+    
+    // Calcola la distanza dal giocatore
+    const dist = distance(enemy, playerPosition);
+    
+    if (dist >= MIN_DISTANCE) {
+      validPosition = true;
+    } else {
+      // Se troppo vicino, prova a posizionare sul lato opposto
+      if (attempts > 25) {
+        // Calcola vettore direzione dal giocatore al nemico
+        const dx = enemy.x - playerPosition.x;
+        const dy = enemy.y - playerPosition.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        
+        // Estendi questo vettore per raggiungere la distanza minima
+        const factor = MIN_DISTANCE / len;
+        enemy.x = playerPosition.x + dx * factor;
+        enemy.y = playerPosition.y + dy * factor;
+        
+        // Riporta all'interno dell'area di gioco se necessario
+        enemy.x = (enemy.x + GAME_WIDTH) % GAME_WIDTH;
+        enemy.y = (enemy.y + GAME_HEIGHT) % GAME_HEIGHT;
+        
+        validPosition = true;
+      }
+    }
+    
+    attempts++;
+  }
+  
+  return enemy;
 };
 
 // Funzione per la collisione elastica tra due moscerini
@@ -135,6 +183,8 @@ function App() {
   // Stati per livelli e ostacoli
   const [obstacles, setObstacles] = useState([])
   const [level, setLevel] = useState(1)
+  // Stato per l'high score
+  const [highScore, setHighScore] = useState(0)
 
   // Funzione per generare una nuova posizione e dimensione del bonus
   const generateNewBonus = () => ({
@@ -204,6 +254,11 @@ function App() {
   }, [score, level]);
 
   const resetGame = () => {
+    // Controlla se il punteggio attuale è maggiore dell'high score
+    if (score > highScore) {
+      setHighScore(score);
+    }
+    
     setPosition({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
     setEnemies([createEnemy()]) // Usa la funzione createEnemy
     setBonusPosition(generateNewBonus()) // Rigenera bonus al reset
@@ -517,6 +572,9 @@ function App() {
     });
 
     // Secondo passo: Risolvi le collisioni tra nemici con rimbalzo
+    // Teniamo traccia di quali nemici devono essere eliminati
+    const enemiesToRemove = new Set();
+    
     for (let i = 0; i < enemiesNeedsUpdate.length; i++) {
       for (let j = i + 1; j < enemiesNeedsUpdate.length; j++) {
         const enemy1 = enemiesNeedsUpdate[i];
@@ -530,35 +588,17 @@ function App() {
         // Raggio totale (diametro di ciascun nemico)
         const totalRadius = PLAYER_RADIUS * 2;
         
-        // Se c'è collisione
+        // Se c'è collisione, marchia entrambi i nemici per la rimozione
         if (dist < totalRadius) {
-          // Applica rimbalzo elastico
-          const result = resolveCollision(enemy1, enemy2);
-          
-          // Aggiorna le velocità
-          enemiesNeedsUpdate[i] = { ...result.enemy1 };
-          enemiesNeedsUpdate[j] = { ...result.enemy2 };
-          
-          // Risolvi sovrapposizione
-          const overlap = (totalRadius - dist) / 2;
-          if (dist > 0) {  // Evita divisione per zero
-            const nx = dx / dist;
-            const ny = dy / dist;
-            
-            // Sposta ogni nemico nella direzione opposta
-            enemiesNeedsUpdate[i].x -= nx * overlap;
-            enemiesNeedsUpdate[i].y -= ny * overlap;
-            enemiesNeedsUpdate[j].x += nx * overlap;
-            enemiesNeedsUpdate[j].y += ny * overlap;
-            
-            // Riapplica limiti bordo dopo la risoluzione della sovrapposizione
-            enemiesNeedsUpdate[i].x = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, enemiesNeedsUpdate[i].x));
-            enemiesNeedsUpdate[i].y = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, enemiesNeedsUpdate[i].y));
-            enemiesNeedsUpdate[j].x = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, enemiesNeedsUpdate[j].x));
-            enemiesNeedsUpdate[j].y = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, enemiesNeedsUpdate[j].y));
-          }
+          enemiesToRemove.add(i);
+          enemiesToRemove.add(j);
         }
       }
+    }
+    
+    // Filtra i nemici che devono essere eliminati
+    if (enemiesToRemove.size > 0) {
+      enemiesNeedsUpdate = enemiesNeedsUpdate.filter((_, index) => !enemiesToRemove.has(index));
     }
 
     // Aggiorna lo stato principale dei nemici
@@ -571,10 +611,10 @@ function App() {
       
       // Attrazione automatica sempre attiva entro 10px
       const isInAutoRange = distToBonus < AUTO_ATTRACTION_RADIUS;
-      // Attrazione speciale in slow motion entro 50px
-      const isInSlowMotionRange = isSlowMotionActive && distToBonus < BONUS_ATTRACTION_RADIUS;
+      // Attrazione entro 50px sempre attiva (non dipende più dallo slow motion)
+      const isInAttractionRange = distToBonus < BONUS_ATTRACTION_RADIUS;
       
-      if (isInAutoRange || isInSlowMotionRange) {
+      if (isInAutoRange || isInAttractionRange) {
         // Calcola vettore direzione dal bonus al giocatore
         const dx = position.x - bonusPosition.x;
         const dy = position.y - bonusPosition.y;
@@ -586,8 +626,10 @@ function App() {
           // Attrazione automatica più forte
           attractionSpeed = AUTO_ATTRACTION_SPEED;
         } else {
-          // Attrazione di slow motion più debole ma con raggio maggiore
-          attractionSpeed = BONUS_ATTRACTION_SPEED * (1 - distToBonus / BONUS_ATTRACTION_RADIUS);
+          // Attrazione standard con raggio maggiore
+          // Se in slow motion, l'attrazione è più forte
+          const baseAttractionSpeed = BONUS_ATTRACTION_SPEED * (1 - distToBonus / BONUS_ATTRACTION_RADIUS);
+          attractionSpeed = isSlowMotionActive ? baseAttractionSpeed * 1.5 : baseAttractionSpeed;
         }
         
         // Applica movimento di attrazione
@@ -607,7 +649,19 @@ function App() {
       const dist = distance(bonusPosition, position);
       if (dist < collisionDistance) {
         setScore(score + 1);
-        setEnemies(prevEnemies => [...prevEnemies, createEnemy()]);
+        
+        // Aggiungi nemici in base al livello corrente
+        setEnemies(prevEnemies => {
+          const newEnemies = [...prevEnemies];
+          
+          // Genera tanti nemici quanti indicati dal livello
+          for (let i = 0; i < level; i++) {
+            newEnemies.push(createEnemyAwayFromPlayer(position));
+          }
+          
+          return newEnemies;
+        });
+        
         setBonusPosition(generateNewBonus());
       }
     }
@@ -641,21 +695,21 @@ function App() {
          }
       } else {
         switch(e.key) {
-          case 'ArrowUp': setKeys(prev => ({ ...prev, up: true })); break
-          case 'ArrowDown': setKeys(prev => ({ ...prev, down: true })); break
-          case 'ArrowLeft': setKeys(prev => ({ ...prev, left: true })); break
-          case 'ArrowRight': setKeys(prev => ({ ...prev, right: true })); break
-          default: break
+          case 'ArrowUp': setKeys(prev => ({ ...prev, up: true })); break;
+          case 'ArrowDown': setKeys(prev => ({ ...prev, down: true })); break;
+          case 'ArrowLeft': setKeys(prev => ({ ...prev, left: true })); break;
+          case 'ArrowRight': setKeys(prev => ({ ...prev, right: true })); break;
+          default: break;
         }
       }
     }
     const handleKeyUp = (e) => {
       switch(e.key) {
-        case 'ArrowUp': setKeys(prev => ({ ...prev, up: false })); break
-        case 'ArrowDown': setKeys(prev => ({ ...prev, down: false })); break
-        case 'ArrowLeft': setKeys(prev => ({ ...prev, left: false })); break
-        case 'ArrowRight': setKeys(prev => ({ ...prev, right: false })); break
-        default: break
+        case 'ArrowUp': setKeys(prev => ({ ...prev, up: false })); break;
+        case 'ArrowDown': setKeys(prev => ({ ...prev, down: false })); break;
+        case 'ArrowLeft': setKeys(prev => ({ ...prev, left: false })); break;
+        case 'ArrowRight': setKeys(prev => ({ ...prev, right: false })); break;
+        default: break;
       }
     }
 
@@ -760,46 +814,50 @@ function App() {
 
   return (
     <div style={{
-      width: `${GAME_WIDTH}px`,
-      height: `${GAME_HEIGHT}px`,
-      backgroundColor: 'white',
-      overflow: 'hidden',
-      position: 'relative',
-      border: '1px solid black'
+      maxWidth: `${GAME_WIDTH}px`,
+      margin: '0 auto',
+      fontFamily: 'Arial, sans-serif'
     }}>
-      {/* Indicatore di livello */}
-      <div id="level" style={{
-        position: 'absolute',
-        top: '10px',
-        left: '10px',
-        fontSize: '16px',
-        fontWeight: 'bold',
-        color: 'black',
-        backgroundColor: 'rgba(255, 255, 255, 0.7)',
-        padding: '4px 8px',
-        borderRadius: '4px',
+      {/* Barra UI superiore */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '10px 15px',
+        backgroundColor: '#f0f0f0',
+        borderRadius: '8px 8px 0 0',
         border: '1px solid #333',
-        zIndex: 20
-      }}>Livello: {level}</div>
-      
-      <div id="score">Punti: {score}</div>
-      {/* Barra Slow Motion e testo */}
-      <div style={{ position: 'absolute', top: '10px', right: '10px', textAlign: 'right' }}>
-        <div style={{ 
+        borderBottom: 'none'
+      }}>
+        {/* Indicatori di gioco (livello, punti, record) */}
+        <div style={{
+          display: 'flex',
+          gap: '20px',
+          fontSize: '16px',
+          fontWeight: 'bold'
+        }}>
+          <span>Livello: {level}</span>
+          <span>Punti: {score}</span>
+          <span>Record: {highScore}</span>
+        </div>
+        
+        {/* Barra Slow Motion */}
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ 
             width: '100px', 
             height: '20px', 
             border: '1px solid black', 
             backgroundColor: '#eee',
             display: 'inline-block',
             position: 'relative'
-        }}>
-          <div style={{ 
+          }}>
+            <div style={{ 
               width: `${cooldownPercent}%`, 
               height: '100%', 
               backgroundColor: isSlowMotionActive ? 'lightblue' : (slowMotionCooldownTimer <= 0 ? 'lime' : 'orange'), 
               transition: isSlowMotionActive ? 'none' : 'width 0.1s linear' 
-          }} />
-          <span style={{ 
+            }} />
+            <span style={{ 
               position: 'absolute', 
               left: '50%', 
               top: '50%', 
@@ -808,117 +866,128 @@ function App() {
               color: 'white',
               pointerEvents: 'none',
               textShadow: '1px 1px 1px rgba(0,0,0,0.7)'
-          }}>
-             Slowmotion
-          </span>
-        </div>
-        {/* Testo SOTTO la barra */} 
-        <div style={{ 
+            }}>
+              Slowmotion
+            </span>
+          </div>
+          <div style={{ 
             fontSize: '10px', 
             color: 'black',
             marginTop: '2px',
             width: '100px',
             textAlign: 'center'
-         }}>
-          Press Spacebar
+          }}>
+            Press Spacebar
+          </div>
         </div>
       </div>
       
-      {/* Ostacoli */}
-      {obstacles.map((obstacle, index) => (
-        <div key={`obstacle-${index}`} style={{
-          position: 'absolute',
-          width: `${OBSTACLE_SIZE}px`,
-          height: `${OBSTACLE_SIZE}px`,
-          backgroundColor: 'red',
-          left: `${obstacle.x - OBSTACLE_SIZE/2}px`,
-          top: `${obstacle.y - OBSTACLE_SIZE/2}px`,
-          zIndex: 4
-        }} />
-      ))}
-      
-      {/* Moscerino */}
+      {/* Area di gioco */}
       <div style={{
-        width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: 'black',
-        borderRadius: '50%', position: 'absolute',
-        left: `${position.x - PLAYER_RADIUS + playerWiggleX}px`,
-        top: `${position.y - PLAYER_RADIUS + playerWiggleY}px`,
-        transform: 'translate3d(0,0,0)', willChange: 'left, top',
-        zIndex: 10
-      }} />
-      {enemies.map((enemy, index) => {
-        const enemyWiggleX = Math.sin(frame * WIGGLE_SPEED * 0.9 + index * 0.5) * WIGGLE_AMOUNT * 0.8;
-        const enemyWiggleY = Math.cos(frame * WIGGLE_SPEED * 0.7 + index * 0.6) * WIGGLE_AMOUNT * 0.8;
+        width: `${GAME_WIDTH}px`,
+        height: `${GAME_HEIGHT}px`,
+        backgroundColor: 'white',
+        overflow: 'hidden',
+        position: 'relative',
+        border: '1px solid black',
+        cursor: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Ccircle cx=\'12\' cy=\'12\' r=\'2\' fill=\'black\' /%3E%3C/svg%3E") 12 12, crosshair'
+      }}>
+        {/* Ostacoli */}
+        {obstacles.map((obstacle, index) => (
+          <div key={`obstacle-${index}`} style={{
+            position: 'absolute',
+            width: `${OBSTACLE_SIZE}px`,
+            height: `${OBSTACLE_SIZE}px`,
+            backgroundColor: 'red',
+            left: `${obstacle.x - OBSTACLE_SIZE/2}px`,
+            top: `${obstacle.y - OBSTACLE_SIZE/2}px`,
+            zIndex: 4
+          }} />
+        ))}
         
-        // Determina colore in base alla velocità e intelligenza
-        let enemyColor = 'orange'; // Default medio
-        
-        if (enemy.speedMultiplier < SPEED_MULTIPLIERS.medium) {
-            enemyColor = 'gold'; // Più lento
-        } else if (enemy.speedMultiplier > SPEED_MULTIPLIERS.medium) {
-            enemyColor = 'red'; // Più veloce
-        }
-        
-        // Modificatore del colore in base all'intelligenza
-        if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
-            // Rendi il colore più scuro per nemici intelligenti
-            if (enemyColor === 'gold') enemyColor = 'goldenrod';
-            else if (enemyColor === 'orange') enemyColor = 'darkorange';
-            else if (enemyColor === 'red') enemyColor = 'darkred';
-        } else if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
-            // Rendi il colore più chiaro per nemici poco intelligenti
-            if (enemyColor === 'gold') enemyColor = 'palegoldenrod';
-            else if (enemyColor === 'orange') enemyColor = 'peachpuff';
-            else if (enemyColor === 'red') enemyColor = 'salmon';
-        }
-        
-        return (
-          <div key={index} style={{
-            width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: enemyColor, // Usa colore dinamico
-            borderRadius: '50%', position: 'absolute',
-            left: `${enemy.x - PLAYER_RADIUS + enemyWiggleX}px`,
-            top: `${enemy.y - PLAYER_RADIUS + enemyWiggleY}px`,
-            transform: 'translate3d(0,0,0)', willChange: 'left, top',
+        {/* Moscerino */}
+        <div style={{
+          width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: 'black',
+          borderRadius: '50%', position: 'absolute',
+          left: `${position.x - PLAYER_RADIUS + playerWiggleX}px`,
+          top: `${position.y - PLAYER_RADIUS + playerWiggleY}px`,
+          transform: 'translate3d(0,0,0)', willChange: 'left, top',
+          zIndex: 10
+        }} />
+        {enemies.map((enemy, index) => {
+          const enemyWiggleX = Math.sin(frame * WIGGLE_SPEED * 0.9 + index * 0.5) * WIGGLE_AMOUNT * 0.8;
+          const enemyWiggleY = Math.cos(frame * WIGGLE_SPEED * 0.7 + index * 0.6) * WIGGLE_AMOUNT * 0.8;
+          
+          // Determina colore in base alla velocità e intelligenza
+          let enemyColor = 'orange'; // Default medio
+          
+          if (enemy.speedMultiplier < SPEED_MULTIPLIERS.medium) {
+              enemyColor = 'gold'; // Più lento
+          } else if (enemy.speedMultiplier > SPEED_MULTIPLIERS.medium) {
+              enemyColor = 'red'; // Più veloce
+          }
+          
+          // Modificatore del colore in base all'intelligenza
+          if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
+              // Rendi il colore più scuro per nemici intelligenti
+              if (enemyColor === 'gold') enemyColor = 'goldenrod';
+              else if (enemyColor === 'orange') enemyColor = 'darkorange';
+              else if (enemyColor === 'red') enemyColor = 'darkred';
+          } else if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
+              // Rendi il colore più chiaro per nemici poco intelligenti
+              if (enemyColor === 'gold') enemyColor = 'palegoldenrod';
+              else if (enemyColor === 'orange') enemyColor = 'peachpuff';
+              else if (enemyColor === 'red') enemyColor = 'salmon';
+          }
+          
+          return (
+            <div key={index} style={{
+              width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: enemyColor, // Usa colore dinamico
+              borderRadius: '50%', position: 'absolute',
+              left: `${enemy.x - PLAYER_RADIUS + enemyWiggleX}px`,
+              top: `${enemy.y - PLAYER_RADIUS + enemyWiggleY}px`,
+              transform: 'translate3d(0,0,0)', willChange: 'left, top',
+              zIndex: 5
+            }} />
+          );
+        })}
+        {bonusPosition && (
+          <div className="bonus" style={{
+            width: `${bonusPosition.size}px`, // Usa dimensione dallo stato
+            height: `${bonusPosition.size}px`, // Usa dimensione dallo stato
+            left: `${bonusPosition.x - bonusPosition.size / 2}px`, // Centra in base alla dimensione
+            top: `${bonusPosition.y - bonusPosition.size / 2}px`, // Centra in base alla dimensione
             zIndex: 5
           }} />
-        );
-      })}
-      {bonusPosition && (
-        <div className="bonus" style={{
-          width: `${bonusPosition.size}px`, // Usa dimensione dallo stato
-          height: `${bonusPosition.size}px`, // Usa dimensione dallo stato
-          left: `${bonusPosition.x - bonusPosition.size / 2}px`, // Centra in base alla dimensione
-          top: `${bonusPosition.y - bonusPosition.size / 2}px`, // Centra in base alla dimensione
-          zIndex: 5
-        }} />
-      )}
-      {/* Traiettoria */}
-      {isSlowMotionActive && trajectoryPoints.length > 0 && (
-          trajectoryPoints
-              .filter((_, index) => index % TRAJECTORY_DASH_SKIP === 0) 
-              .map((point, index, filteredArray) => {
-                  const opacity = 0.8 * (1 - (index / (filteredArray.length || 1))); // Fade da 0.8 a 0
-                  const dotColor = point.isHoming 
-                                   ? `rgba(255, 0, 0, ${opacity})` // Rosso se homing
-                                   : `rgba(100, 100, 100, ${opacity})`; // Grigio altrimenti
-                  return (
-                      <div
-                          key={`traj-${index}`}
-                          style={{
-                              position: 'absolute',
-                              width: `${TRAJECTORY_DOT_SIZE * 2}px`,
-                              height: `${TRAJECTORY_DOT_SIZE * 2}px`,
-                              backgroundColor: dotColor, // Usa colore calcolato
-                              borderRadius: '50%',
-                              left: `${point.x - TRAJECTORY_DOT_SIZE}px`,
-                              top: `${point.y - TRAJECTORY_DOT_SIZE}px`,
-                              zIndex: 3, 
-                              pointerEvents: 'none',
-                          }}
-                      />
-                  );
-              })
-      )}
+        )}
+        {/* Traiettoria */}
+        {isSlowMotionActive && trajectoryPoints.length > 0 && (
+            trajectoryPoints
+                .filter((_, index) => index % TRAJECTORY_DASH_SKIP === 0) 
+                .map((point, index, filteredArray) => {
+                    const opacity = 0.8 * (1 - (index / (filteredArray.length || 1))); // Fade da 0.8 a 0
+                    const dotColor = point.isHoming 
+                                    ? `rgba(255, 0, 0, ${opacity})` // Rosso se homing
+                                    : `rgba(100, 100, 100, ${opacity})`; // Grigio altrimenti
+                    return (
+                        <div
+                            key={`traj-${index}`}
+                            style={{
+                                position: 'absolute',
+                                width: `${TRAJECTORY_DOT_SIZE * 2}px`,
+                                height: `${TRAJECTORY_DOT_SIZE * 2}px`,
+                                backgroundColor: dotColor, // Usa colore calcolato
+                                borderRadius: '50%',
+                                left: `${point.x - TRAJECTORY_DOT_SIZE}px`,
+                                top: `${point.y - TRAJECTORY_DOT_SIZE}px`,
+                                zIndex: 3, 
+                                pointerEvents: 'none',
+                            }}
+                        />
+                    );
+                })
+        )}
+      </div>
     </div>
   )
 }
