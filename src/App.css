@@ -97,37 +97,6 @@ body {
   animation: pulse-enemy 2s infinite alternate; /* Rallentata l'animazione */
 }
 
-/* Coni di visione dei nemici */
-.vision-cone {
-  z-index: 4;
-  opacity: 0.3;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-  will-change: transform;
-}
-
-.vision-cone.player-spotted {
-  opacity: 0.6;
-  border-bottom-color: rgba(255, 0, 0, 0.5) !important;
-  animation: pulse-cone 0.5s infinite alternate;
-}
-
-@keyframes pulse-cone {
-  0% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.8;
-  }
-}
-
-/* Stile per i muri */
-.wall {
-  background-color: #fff;
-  box-shadow: 0 0 15px #fff, 0 0 5px #0f0;
-  z-index: 15;
-}
-
 @keyframes pulse-enemy {
   0% {
     box-shadow: 0 0 8px #ff0000, 0 0 12px #ff0000;
