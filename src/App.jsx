@@ -49,7 +49,7 @@ const getRandomRole = () => {
   return roles[Math.floor(Math.random() * roles.length)]
 }
 
-// Funzione helper per la distanza
+// Funzione helper per la distanza - ottimizzata
 const distance = (p1, p2) => {
   if (!p1 || !p2) return Infinity // Gestisce il caso bonus non ancora caricato o nullo
   const dx = p1.x - p2.x
@@ -199,35 +199,56 @@ const Enemy = React.memo(({ enemy }) => {
         left: enemy.x - PLAYER_RADIUS,
         top: enemy.y - PLAYER_RADIUS,
         width: PLAYER_RADIUS * 2,
-        height: PLAYER_RADIUS * 2
+        height: PLAYER_RADIUS * 2,
+        willChange: 'transform' // Per ottimizzare le animazioni
       }}
     />
+  );
+}, (prevProps, nextProps) => {
+  // Funzione di comparazione personalizzata per evitare ri-rendering non necessari
+  // Re-renderizza solo se la posizione è cambiata significativamente (più di 1px)
+  return (
+    Math.abs(prevProps.enemy.x - nextProps.enemy.x) < 1 &&
+    Math.abs(prevProps.enemy.y - nextProps.enemy.y) < 1 &&
+    prevProps.enemy.intelligence === nextProps.enemy.intelligence
   );
 });
 
 // Componente ottimizzato per la traiettoria
 const Trajectory = React.memo(({ points }) => {
-  return points
-    .filter((_, index) => index % 3 === 0) // Ridotto a meno punti (filtro ogni 3 invece di ogni 2)
-    .map((point, index, filtered) => {
-      const opacity = 1 - index / filtered.length;
-      const dotColor = point.isHoming ? '#ff0000' : '#aaaaaa';
-      return (
-        <div
-          key={`trajectory-${index}`} 
-          className="trajectory-dot"
-          style={{
-            position: 'absolute',
-            left: point.x - TRAJECTORY_DOT_SIZE / 2,
-            top: point.y - TRAJECTORY_DOT_SIZE / 2,
-            width: TRAJECTORY_DOT_SIZE,
-            height: TRAJECTORY_DOT_SIZE,
-            backgroundColor: dotColor,
-            opacity: opacity
-          }}
-        />
-      );
-    });
+  // Utilizziamo useMemo anche qui per evitare calcoli ripetuti
+  const visiblePoints = useMemo(() => {
+    return points
+      .filter((_, index) => index % 4 === 0) // Filtriamo ancora di più: ogni 4 invece di ogni 3
+      .map((point, index, filtered) => {
+        const opacity = 1 - index / filtered.length;
+        const dotColor = point.isHoming ? '#ff0000' : '#aaaaaa';
+        return {
+          key: `trajectory-${index}`,
+          x: point.x,
+          y: point.y,
+          opacity,
+          color: dotColor
+        };
+      });
+  }, [points]);
+
+  return visiblePoints.map(point => (
+    <div
+      key={point.key} 
+      className="trajectory-dot"
+      style={{
+        position: 'absolute',
+        left: point.x - TRAJECTORY_DOT_SIZE / 2,
+        top: point.y - TRAJECTORY_DOT_SIZE / 2,
+        width: TRAJECTORY_DOT_SIZE,
+        height: TRAJECTORY_DOT_SIZE,
+        backgroundColor: point.color,
+        opacity: point.opacity,
+        willChange: 'transform, opacity' // Per ottimizzare le animazioni
+      }}
+    />
+  ));
 });
 
 function App() {
@@ -237,7 +258,8 @@ function App() {
   const [enemies, setEnemies] = useState([createEnemy()]) // Usa la funzione createEnemy
   const [bonusPosition, setBonusPosition] = useState(null) // Ora include { x, y, size }
   const [score, setScore] = useState(0)
-  const [frame, setFrame] = useState(0) // Stato per il conteggio dei frame per il wiggle
+  // Non usiamo più lo stato del frame perché causava troppi re-render
+  // const [frame, setFrame] = useState(0)
   // Slow Motion State
   const [isSlowMotionActive, setIsSlowMotionActive] = useState(false)
   const [slowMotionDurationTimer, setSlowMotionDurationTimer] = useState(0)
@@ -252,11 +274,44 @@ function App() {
   const [matrixPattern, setMatrixPattern] = useState(MATRIX_PATTERNS[0]);
   const [matrixID, setMatrixID] = useState(generateMatrixID());
 
-  // Riferimenti e memo
-  const requestRef = useRef();
-  const previousTimeRef = useRef();
-  const lastBonusTimeRef = useRef(0);
+  // Riferimenti per lo stato che non provoca re-render
+  const frameCountRef = useRef(0);
+  const animationFrameRef = useRef();
+  const lastUpdateTimeRef = useRef(0);
+  const gameStateRef = useRef({
+    position,
+    velocity,
+    keys,
+    enemies,
+    bonusPosition,
+    isSlowMotionActive,
+    slowMotionDurationTimer,
+    slowMotionCooldownTimer
+  });
   
+  // Aggiorniamo il ref ogni volta che cambiano gli stati
+  useEffect(() => {
+    gameStateRef.current = {
+      position,
+      velocity,
+      keys,
+      enemies,
+      bonusPosition,
+      isSlowMotionActive,
+      slowMotionDurationTimer,
+      slowMotionCooldownTimer
+    };
+  }, [
+    position,
+    velocity,
+    keys,
+    enemies,
+    bonusPosition,
+    isSlowMotionActive,
+    slowMotionDurationTimer,
+    slowMotionCooldownTimer
+  ]);
+
   // Funzione per generare una nuova posizione e dimensione del bonus
   const generateNewBonus = () => ({
     x: Math.random() * (GAME_WIDTH - 20) + 10, // Evita spawn troppo vicino ai bordi
@@ -381,7 +436,6 @@ function App() {
       return [];
     }
     
-    // Resto del calcolo della traiettoria (lasciato invariato)
     let currentX = position.x;
     let currentY = position.y;
     let currentVx = velocity.x;
@@ -436,59 +490,14 @@ function App() {
     return points;
   }, [isSlowMotionActive, velocity, position, keys, bonusPosition]);
 
-  // updatePhysics ottimizzato per essere più efficiente
-  const updatePhysics = useCallback(() => {
-    // Determina il fattore di scala temporale
-    const timeScale = isSlowMotionActive ? SLOW_MOTION_FACTOR : 1.0
-    // Fattore di scala temporale per il giocatore (diverso dai nemici)
-    const playerTimeScale = isSlowMotionActive ? PLAYER_SLOW_MOTION_FACTOR : 1.0
-    
-    // --- Aggiornamento Moscerino ---
-    let ax_player = 0
-    let ay_player = 0
-    if (Object.values(keys).some(value => value)) {
-      if (keys.up) ay_player -= 1
-      if (keys.down) ay_player += 1
-      if (keys.left) ax_player -= 1
-      if (keys.right) ax_player += 1
-      if (ax_player !== 0 && ay_player !== 0) {
-        const length = Math.sqrt(ax_player * ax_player + ay_player * ay_player)
-        ax_player /= length
-        ay_player /= length
-      }
-    }
-    
-    // Aggiorna velocità e posizione del giocatore in una singola operazione
-    setVelocity(vel => {
-      const acceleration = 0.3
-      let newVx = (vel.x + ax_player * acceleration) * PLAYER_FRICTION
-      let newVy = (vel.y + ay_player * acceleration) * PLAYER_FRICTION
-      if (Math.abs(newVx) < 0.01) newVx = 0
-      if (Math.abs(newVy) < 0.01) newVy = 0
-      
-      // Aggiorna anche posizione
-      const playerVel = { x: newVx, y: newVy };
-      
-      setPosition(pos => {
-        if (Math.abs(playerVel.x) < 0.01 && Math.abs(playerVel.y) < 0.01) return pos
-        let newX = pos.x + playerVel.x * playerTimeScale
-        let newY = pos.y + playerVel.y * playerTimeScale
-        newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX))
-        newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY))
-        return { x: newX, y: newY }
-      });
-      
-      return playerVel;
-    });
-    
-    // --- Aggiornamento Nemici (con inerzia) --- 
-    const predictedX = position.x + velocity.x * PREDICTION_FACTOR
-    const predictedY = position.y + velocity.y * PREDICTION_FACTOR
-
-    let enemiesNeedsUpdate = [...enemies]; // Copia per modificare patrolTarget
+  // Funzione ottimizzata per aggiornare lo stato dei nemici
+  const updateEnemies = useCallback((enemies, playerPos, playerVel, bonusPos, isSlowMotion) => {
+    const timeScale = isSlowMotion ? SLOW_MOTION_FACTOR : 1.0;
+    const predictedX = playerPos.x + playerVel.x * PREDICTION_FACTOR;
+    const predictedY = playerPos.y + playerVel.y * PREDICTION_FACTOR;
 
     // Primo passo: filtra eventuali nemici che hanno colpito ostacoli
-    enemiesNeedsUpdate = enemiesNeedsUpdate.filter(enemy => {
+    let updatedEnemies = enemies.filter(enemy => {
       // Controlla collisioni con ostacoli
       for (const obstacle of obstacles) {
         if (isPointInObstacle(enemy, obstacle)) {
@@ -498,27 +507,28 @@ function App() {
       return true;
     });
 
-    enemiesNeedsUpdate = enemiesNeedsUpdate.map((enemy, index) => {
-      let targetX = predictedX
-      let targetY = predictedY
-      let accelX = 0
-      let accelY = 0
+    // Secondo passo: aggiorna posizione e velocità
+    updatedEnemies = updatedEnemies.map((enemy, index) => {
+      let targetX = predictedX;
+      let targetY = predictedY;
+      let accelX = 0;
+      let accelY = 0;
       let currentAccelerationFactor = ENEMY_BASE_ACCELERATION * enemy.speedMultiplier;
       let nextIsEngaged = enemy.isEngaged;
-      let nextPatrolTarget = enemy.patrolTarget; // Mantiene target pattuglia
+      let nextPatrolTarget = enemy.patrolTarget;
 
       // Modifica del target in base al livello di intelligenza
       if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
         // Poco intelligenti: inseguimento diretto del giocatore
-        targetX = position.x;
-        targetY = position.y;
+        targetX = playerPos.x;
+        targetY = playerPos.y;
         
       } else if (enemy.intelligence === INTELLIGENCE_LEVELS.medium) {
         // Intelligenti: anticipano le mosse del giocatore
         // Calcola una posizione anticipata basata sul movimento e velocità attuali
         const anticipationFactor = 25 + Math.random() * 15; // Più randomico di PREDICTION_FACTOR
-        targetX = position.x + velocity.x * anticipationFactor;
-        targetY = position.y + velocity.y * anticipationFactor;
+        targetX = playerPos.x + playerVel.x * anticipationFactor;
+        targetY = playerPos.y + playerVel.y * anticipationFactor;
         
         // Aggiungi un po' di randomicità per simulare l'intelligenza
         targetX += (Math.random() - 0.5) * 40;
@@ -526,17 +536,17 @@ function App() {
         
       } else if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
         // Molto intelligenti: comportamento strategico
-        if (bonusPosition) {
+        if (bonusPos) {
           // Calcola la direzione dal giocatore al bonus
-          const towardsBonusX = bonusPosition.x - position.x;
-          const towardsBonusY = bonusPosition.y - position.y;
+          const towardsBonusX = bonusPos.x - playerPos.x;
+          const towardsBonusY = bonusPos.y - playerPos.y;
           const distToBonus = Math.sqrt(towardsBonusX * towardsBonusX + towardsBonusY * towardsBonusY);
           
           if (distToBonus > 0 && distToBonus < 200) {
             // Il giocatore sembra dirigersi verso il bonus: intercetta
             // Cerca di mettersi tra il giocatore e il bonus
-            const interceptX = position.x + (towardsBonusX / distToBonus) * (distToBonus * 0.7);
-            const interceptY = position.y + (towardsBonusY / distToBonus) * (distToBonus * 0.7);
+            const interceptX = playerPos.x + (towardsBonusX / distToBonus) * (distToBonus * 0.7);
+            const interceptY = playerPos.y + (towardsBonusY / distToBonus) * (distToBonus * 0.7);
             
             targetX = interceptX;
             targetY = interceptY;
@@ -550,12 +560,12 @@ function App() {
             
             if (directionChangeProbability > 0.7) {
               // Simula che il nemico "preveda" un cambio di direzione
-              targetX = position.x - velocity.x * advancedAnticipationFactor;
-              targetY = position.y - velocity.y * advancedAnticipationFactor;
+              targetX = playerPos.x - playerVel.x * advancedAnticipationFactor;
+              targetY = playerPos.y - playerVel.y * advancedAnticipationFactor;
             } else {
               // Usa la previsione normale ma migliorata
-              targetX = position.x + velocity.x * advancedAnticipationFactor;
-              targetY = position.y + velocity.y * advancedAnticipationFactor;
+              targetX = playerPos.x + playerVel.x * advancedAnticipationFactor;
+              targetY = playerPos.y + playerVel.y * advancedAnticipationFactor;
             }
             
             // Aggiungi randomicità per comportamento più imprevedibile
@@ -566,9 +576,9 @@ function App() {
       }
 
       // Logica target basata sul ruolo (sovrascrive il target di intelligenza in casi specifici)
-      if (enemy.role === 'guard' && bonusPosition) {
-        const playerDistToBonus = distance(position, bonusPosition)
-        const enemyDistToBonus = distance(enemy, bonusPosition)
+      if (enemy.role === 'guard' && bonusPos) {
+        const playerDistToBonus = distance(playerPos, bonusPos)
+        const enemyDistToBonus = distance(enemy, bonusPos)
         
         if (enemy.isEngaged) {
           // Attualmente sta attaccando
@@ -587,12 +597,12 @@ function App() {
             targetY = predictedY 
           } else {
             // Continua a difendere
-            targetX = bonusPosition.x
-            targetY = bonusPosition.y
+            targetX = bonusPos.x
+            targetY = bonusPos.y
             if (enemyDistToBonus < GUARD_PATROL_RADIUS) { 
               currentAccelerationFactor *= 0.1; // Rallenta ancora di più il pattugliamento lento
-              const vecToBonusX = bonusPosition.x - enemy.x;
-              const vecToBonusY = bonusPosition.y - enemy.y;
+              const vecToBonusX = bonusPos.x - enemy.x;
+              const vecToBonusY = bonusPos.y - enemy.y;
               const distToBonus = Math.sqrt(vecToBonusX * vecToBonusX + vecToBonusY * vecToBonusY) || 1;
               accelX = -vecToBonusY / distToBonus; 
               accelY = vecToBonusX / distToBonus;
@@ -608,8 +618,8 @@ function App() {
         }
       } else if (enemy.role === 'flanker') {
         const flankOffset = 50 
-        const vecToPlayerX = position.x - enemy.x
-        const vecToPlayerY = position.y - enemy.y
+        const vecToPlayerX = playerPos.x - enemy.x
+        const vecToPlayerY = playerPos.y - enemy.y
         let len = Math.sqrt(vecToPlayerX*vecToPlayerX + vecToPlayerY*vecToPlayerY) 
         len = len === 0 ? 1 : len
         const perpX = -vecToPlayerY / len
@@ -618,7 +628,7 @@ function App() {
         targetX = predictedX + perpX * flankOffset * side
         targetY = predictedY + perpY * flankOffset * side
       } else if (enemy.role === 'sentinel') {
-        const playerDist = distance(position, enemy);
+        const playerDist = distance(playerPos, enemy);
         if (playerDist <= SENTINEL_AGGRO_RADIUS) {
           // INSEGUE GIOCATORE
           targetX = predictedX;
@@ -711,28 +721,25 @@ function App() {
         vx: newVx, 
         vy: newVy, 
         isEngaged: nextIsEngaged, 
-        patrolTarget: nextPatrolTarget 
+        patrolTarget: nextPatrolTarget,
+        id: enemy.id || Math.random().toString(36).substr(2, 9) // Assicuriamoci che ogni nemico abbia un ID univoco
       } 
     });
 
-    // Secondo passo: Risolvi le collisioni tra nemici con rimbalzo
-    // Teniamo traccia di quali nemici devono essere eliminati
+    // Terzo passo: Risolvi le collisioni tra nemici
     const enemiesToRemove = new Set();
     
-    for (let i = 0; i < enemiesNeedsUpdate.length; i++) {
-      for (let j = i + 1; j < enemiesNeedsUpdate.length; j++) {
-        const enemy1 = enemiesNeedsUpdate[i];
-        const enemy2 = enemiesNeedsUpdate[j];
+    for (let i = 0; i < updatedEnemies.length; i++) {
+      for (let j = i + 1; j < updatedEnemies.length; j++) {
+        const enemy1 = updatedEnemies[i];
+        const enemy2 = updatedEnemies[j];
         
-        // Calcola distanza tra i due nemici
         const dx = enemy2.x - enemy1.x;
         const dy = enemy2.y - enemy1.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // Raggio totale (diametro di ciascun nemico)
         const totalRadius = PLAYER_RADIUS * 2;
         
-        // Se c'è collisione, marchia entrambi i nemici per la rimozione
         if (dist < totalRadius) {
           enemiesToRemove.add(i);
           enemiesToRemove.add(j);
@@ -740,117 +747,227 @@ function App() {
       }
     }
     
-    // Filtra i nemici che devono essere eliminati
     if (enemiesToRemove.size > 0) {
-      enemiesNeedsUpdate = enemiesNeedsUpdate.filter((_, index) => !enemiesToRemove.has(index));
+      updatedEnemies = updatedEnemies.filter((_, index) => !enemiesToRemove.has(index));
     }
 
-    // Aggiorna lo stato principale dei nemici
-    setEnemies(enemiesNeedsUpdate);
-
-    // --- Attrazione e raccolta bonus ---
-    if (bonusPosition) {
-      // Controlla se il bonus deve essere attratto verso il giocatore
-      const distToBonus = distance(bonusPosition, position);
+    return updatedEnemies;
+  }, [obstacles]);
+  
+  // Game loop ottimizzato basato su requestAnimationFrame con frame throttling
+  const gameLoop = useCallback((timestamp) => {
+    // Limitiamo gli FPS a 60 (o meno)
+    if (!lastUpdateTimeRef.current) lastUpdateTimeRef.current = timestamp;
+    
+    const elapsed = timestamp - lastUpdateTimeRef.current;
+    const targetFrameTime = 16.67; // ~60fps
+    
+    if (elapsed >= targetFrameTime) {
+      // Aggiorniamo il timestamp dell'ultimo update
+      lastUpdateTimeRef.current = timestamp;
       
-      // Attrazione automatica sempre attiva entro 10px
-      const isInAutoRange = distToBonus < AUTO_ATTRACTION_RADIUS;
-      // Attrazione entro 50px sempre attiva (non dipende più dallo slow motion)
-      const isInAttractionRange = distToBonus < BONUS_ATTRACTION_RADIUS;
+      // Incrementiamo il contatore di frame
+      frameCountRef.current++;
       
-      if (isInAutoRange || isInAttractionRange) {
-        // Calcola vettore direzione dal bonus al giocatore
-        const dx = position.x - bonusPosition.x;
-        const dy = position.y - bonusPosition.y;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        
-        // Determina la velocità di attrazione in base al contesto
-        let attractionSpeed;
-        if (isInAutoRange) {
-          // Attrazione automatica più forte
-          attractionSpeed = AUTO_ATTRACTION_SPEED;
-        } else {
-          // Attrazione standard con raggio maggiore
-          // Se in slow motion, l'attrazione è più forte
-          const baseAttractionSpeed = BONUS_ATTRACTION_SPEED * (1 - distToBonus / BONUS_ATTRACTION_RADIUS);
-          attractionSpeed = isSlowMotionActive ? baseAttractionSpeed * 1.5 : baseAttractionSpeed;
-        }
-        
-        // Applica movimento di attrazione
-        const newBonusX = bonusPosition.x + (dx / len) * attractionSpeed;
-        const newBonusY = bonusPosition.y + (dy / len) * attractionSpeed;
-        
-        // Aggiorna la posizione del bonus
-        setBonusPosition({
-          ...bonusPosition,
-          x: newBonusX,
-          y: newBonusY
-        });
-      }
+      // Otteniamo lo stato attuale dal ref
+      const {
+        position,
+        velocity,
+        keys,
+        enemies,
+        bonusPosition,
+        isSlowMotionActive,
+        slowMotionDurationTimer,
+        slowMotionCooldownTimer
+      } = gameStateRef.current;
       
-      // Usa la dimensione del bonus per la collisione
-      const collisionDistance = PLAYER_RADIUS + bonusPosition.size / 2;
-      const dist = distance(bonusPosition, position);
-      if (dist < collisionDistance) {
-        setScore(score + 1);
-        
-        // Aggiungi nemici in base al livello corrente
-        setEnemies(prevEnemies => {
-          const newEnemies = [...prevEnemies];
-          
-          // Genera tanti nemici quanti indicati dal livello
-          for (let i = 0; i < level; i++) {
-            newEnemies.push(createEnemyAwayFromPlayer(position));
-          }
-          
-          return newEnemies;
-        });
-        
-        setBonusPosition(generateNewBonus());
-      }
-    }
-
-    // --- Controlla collisione nemico-moscerino ---
-    enemies.forEach(enemy => {
-      const dist = distance(enemy, position)
-      if (dist < PLAYER_RADIUS * 2) { // Collisione basata sui raggi
-        resetGame()
-      }
-    })
-
-    // --- Controlla collisione giocatore-ostacolo ---
-    for (const obstacle of obstacles) {
-      if (isPointInObstacle(position, obstacle)) {
-        resetGame();
-        break;
-      }
-    }
-
-  }, [keys, velocity, position, enemies, bonusPosition, score, isSlowMotionActive, obstacles, level]) // Aggiunta dipendenze
-
-  // useEffect per game loop ottimizzato
-  useEffect(() => {
-    // Utilizzo setInterval invece di requestAnimationFrame per più stabilità
-    // e per limitare gli FPS a 60 (o meno se il browser/dispositivo non può gestirli)
-    const gameLoopInterval = setInterval(() => {
+      // Aggiorna timer slow motion
       if (isSlowMotionActive) {
-        setSlowMotionDurationTimer(t => {
-          const nextTimer = t - 1;
-          if (nextTimer <= 0) {
-            setIsSlowMotionActive(false);
-            return 0;
-          }
-          return nextTimer;
-        });
+        const nextTimer = slowMotionDurationTimer - 1;
+        if (nextTimer <= 0) {
+          setIsSlowMotionActive(false);
+          setSlowMotionDurationTimer(0);
+        } else {
+          setSlowMotionDurationTimer(nextTimer);
+        }
       }
       
       if (slowMotionCooldownTimer > 0) {
-        setSlowMotionCooldownTimer(t => Math.max(0, t - 1));
+        setSlowMotionCooldownTimer(Math.max(0, slowMotionCooldownTimer - 1));
       }
       
-      updatePhysics();
-    }, 16); // ~60 FPS
+      // --- Aggiornamento Moscerino ---
+      let ax_player = 0;
+      let ay_player = 0;
+      
+      if (Object.values(keys).some(value => value)) {
+        if (keys.up) ay_player -= 1;
+        if (keys.down) ay_player += 1;
+        if (keys.left) ax_player -= 1;
+        if (keys.right) ax_player += 1;
+        
+        if (ax_player !== 0 && ay_player !== 0) {
+          const length = Math.sqrt(ax_player * ax_player + ay_player * ay_player);
+          ax_player /= length;
+          ay_player /= length;
+        }
+      }
+      
+      // Fattore di scala temporale per il giocatore
+      const playerTimeScale = isSlowMotionActive ? PLAYER_SLOW_MOTION_FACTOR : 1.0;
+      
+      // Aggiorna velocità e posizione del giocatore in una singola operazione
+      const acceleration = 0.3;
+      const newVx = (velocity.x + ax_player * acceleration) * PLAYER_FRICTION;
+      const newVy = (velocity.y + ay_player * acceleration) * PLAYER_FRICTION;
+      const finalVx = Math.abs(newVx) < 0.01 ? 0 : newVx;
+      const finalVy = Math.abs(newVy) < 0.01 ? 0 : newVy;
+      
+      // Calcola nuova posizione
+      if (Math.abs(finalVx) >= 0.01 || Math.abs(finalVy) >= 0.01) {
+        let newX = position.x + finalVx * playerTimeScale;
+        let newY = position.y + finalVy * playerTimeScale;
+        
+        newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX));
+        newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY));
+        
+        setPosition({ x: newX, y: newY });
+      }
+      
+      setVelocity({ x: finalVx, y: finalVy });
+      
+      // Aggiorna nemici
+      const updatedEnemies = updateEnemies(
+        enemies,
+        position,
+        velocity,
+        bonusPosition,
+        isSlowMotionActive
+      );
+      
+      setEnemies(updatedEnemies);
+      
+      // Gestione bonus
+      if (bonusPosition) {
+        // Controlla se il bonus deve essere attratto verso il giocatore
+        const distToBonus = distance(bonusPosition, position);
+        
+        // Attrazione automatica sempre attiva entro 10px
+        const isInAutoRange = distToBonus < AUTO_ATTRACTION_RADIUS;
+        // Attrazione entro 50px sempre attiva
+        const isInAttractionRange = distToBonus < BONUS_ATTRACTION_RADIUS;
+        
+        if (isInAutoRange || isInAttractionRange) {
+          // Calcola vettore direzione dal bonus al giocatore
+          const dx = position.x - bonusPosition.x;
+          const dy = position.y - bonusPosition.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          
+          // Determina la velocità di attrazione in base al contesto
+          let attractionSpeed;
+          if (isInAutoRange) {
+            // Attrazione automatica più forte
+            attractionSpeed = AUTO_ATTRACTION_SPEED;
+          } else {
+            // Attrazione standard
+            const baseAttractionSpeed = BONUS_ATTRACTION_SPEED * (1 - distToBonus / BONUS_ATTRACTION_RADIUS);
+            attractionSpeed = isSlowMotionActive ? baseAttractionSpeed * 1.5 : baseAttractionSpeed;
+          }
+          
+          // Applica movimento di attrazione
+          const newBonusX = bonusPosition.x + (dx / len) * attractionSpeed;
+          const newBonusY = bonusPosition.y + (dy / len) * attractionSpeed;
+          
+          // Aggiorna la posizione del bonus
+          setBonusPosition({
+            ...bonusPosition,
+            x: newBonusX,
+            y: newBonusY
+          });
+        }
+        
+        // Usa la dimensione del bonus per la collisione
+        const collisionDistance = PLAYER_RADIUS + bonusPosition.size / 2;
+        const dist = distance(bonusPosition, position);
+        if (dist < collisionDistance) {
+          setScore(prevScore => {
+            const newScore = prevScore + 1;
+            
+            // Controlla se è necessario aumentare di livello
+            const newLevel = Math.floor(newScore / 5) + 1;
+            if (newLevel > level) {
+              setLevel(newLevel);
+              
+              // Aggiungi un nuovo ostacolo per il nuovo livello
+              if (newLevel > 1) {
+                setObstacles(prev => [...prev, generateNewObstacle()]);
+              }
+            }
+            
+            return newScore;
+          });
+          
+          // Aggiungi nemici in base al livello corrente
+          setEnemies(prevEnemies => {
+            const newEnemies = [...prevEnemies];
+            
+            // Genera tanti nemici quanti indicati dal livello
+            for (let i = 0; i < level; i++) {
+              newEnemies.push(createEnemyAwayFromPlayer(position));
+            }
+            
+            return newEnemies;
+          });
+          
+          setBonusPosition(generateNewBonus());
+        }
+      }
+      
+      // Controlla collisioni
+      // --- Controlla collisione nemico-moscerino ---
+      for (const enemy of enemies) {
+        const dist = distance(enemy, position);
+        if (dist < PLAYER_RADIUS * 2) {
+          resetGame();
+          break;
+        }
+      }
+      
+      // --- Controlla collisione giocatore-ostacolo ---
+      for (const obstacle of obstacles) {
+        if (isPointInObstacle(position, obstacle)) {
+          resetGame();
+          break;
+        }
+      }
+    }
     
+    // Richiedi il prossimo frame
+    animationFrameRef.current = requestAnimationFrame(gameLoop);
+  }, [
+    updateEnemies,
+    generateNewBonus,
+    generateNewObstacle,
+    resetGame,
+    level,
+    obstacles
+  ]);
+  
+  // Avvia il game loop
+  useEffect(() => {
+    // Avvia il game loop
+    animationFrameRef.current = requestAnimationFrame(gameLoop);
+    
+    // Pulizia
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [gameLoop]);
+  
+  // Imposta gli event listener per i tasti
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === ' ' ) { // Barra spaziatrice
          e.preventDefault(); // Impedisce lo scroll della pagina
@@ -884,33 +1001,23 @@ function App() {
     window.addEventListener('keyup', handleKeyUp)
     
     return () => {
-      clearInterval(gameLoopInterval);
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [updatePhysics, isSlowMotionActive, slowMotionCooldownTimer]);
+  }, [slowMotionCooldownTimer]);
 
   // Calcolo percentuale per la barra di cooldown
   const cooldownPercent = useMemo(() => {
     return Math.max(0, 1 - (slowMotionCooldownTimer / SLOW_MOTION_COOLDOWN_FRAMES)) * 100;
   }, [slowMotionCooldownTimer]);
 
-  // Update Matrix decorative elements
-  useEffect(() => {
-    const patternInterval = setInterval(() => {
-      const newPattern = MATRIX_PATTERNS[Math.floor(Math.random() * MATRIX_PATTERNS.length)];
-      setMatrixPattern(newPattern);
-    }, 5000);
-    
-    const idInterval = setInterval(() => {
-      setMatrixID(generateMatrixID());
-    }, 3000);
-    
-    return () => {
-      clearInterval(patternInterval);
-      clearInterval(idInterval);
-    };
-  }, []);
+  // Ottimizziamo il rendering con un ID stabile per ogni nemico
+  const enemiesWithIds = useMemo(() => {
+    return enemies.map(enemy => ({
+      ...enemy,
+      id: enemy.id || Math.random().toString(36).substr(2, 9)
+    }));
+  }, [enemies]);
 
   return (
     <div style={{ 
@@ -920,7 +1027,7 @@ function App() {
       justifyContent: 'center', 
       alignItems: 'center', 
       flexDirection: 'column',
-      backgroundColor: '#000' // Sfondo nero senza effetti
+      backgroundColor: '#000'
     }}>
       {/* Titolo */}
       <div style={{
@@ -1001,8 +1108,9 @@ function App() {
               position: 'absolute',
               left: obs.x,
               top: obs.y,
-              width: obs.width,
-              height: obs.height
+              width: obs.width || OBSTACLE_SIZE,
+              height: obs.height || OBSTACLE_SIZE,
+              willChange: 'transform'
             }}></div>
           ))}
           
@@ -1013,7 +1121,8 @@ function App() {
               left: bonusPosition.x - bonusPosition.size / 2,
               top: bonusPosition.y - bonusPosition.size / 2,
               width: bonusPosition.size,
-              height: bonusPosition.size
+              height: bonusPosition.size,
+              willChange: 'transform'
             }}></div>
           )}
           
@@ -1023,8 +1132,8 @@ function App() {
           )}
           
           {/* Utilizzo del componente Enemy memorizzato per ogni nemico */}
-          {enemies.map((enemy) => (
-            <Enemy key={`enemy-${enemy.id || Math.random()}`} enemy={enemy} />
+          {enemiesWithIds.map((enemy) => (
+            <Enemy key={`enemy-${enemy.id}`} enemy={enemy} />
           ))}
           
           {/* Giocatore - senza effetto wiggle */}
@@ -1033,7 +1142,8 @@ function App() {
             left: position.x - PLAYER_RADIUS,
             top: position.y - PLAYER_RADIUS,
             width: PLAYER_RADIUS * 2,
-            height: PLAYER_RADIUS * 2
+            height: PLAYER_RADIUS * 2,
+            willChange: 'transform'
           }}></div>
         </div>
       </div>
@@ -1041,4 +1151,4 @@ function App() {
   )
 }
 
-export default React.memo(App) // Memorize anche il componente principale
+export default React.memo(App)

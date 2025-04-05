@@ -25,16 +25,17 @@ body {
   position: relative;
   z-index: 1;
   border-radius: 5px;
-  box-shadow: 0 0 30px #0f0;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.6);
   overflow: hidden;
+  will-change: transform;
 }
 
 .ui-bar {
   background: rgba(0, 20, 0, 0.8);
   border: 1px solid #0f0;
   border-radius: 5px 5px 0 0;
-  box-shadow: 0 0 10px #0f0 inset;
-  text-shadow: 0 0 5px #0f0;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5) inset;
+  text-shadow: 0 0 3px #0f0;
 }
 
 .game-area {
@@ -42,7 +43,7 @@ body {
   background: rgba(0, 5, 0, 0.9);
   border: 1px solid #0f0;
   overflow: hidden;
-  box-shadow: 0 0 5px #0f0 inset;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.4) inset;
 }
 
 .grid-background {
@@ -62,79 +63,78 @@ body {
 .player {
   border-radius: 50%;
   background: #0f0;
-  box-shadow: 0 0 10px #0f0, 0 0 5px #fff;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.8), 0 0 4px rgba(255, 255, 255, 0.4);
   z-index: 10;
   transform-origin: center;
-  /* Utilizziamo will-change per ottimizzare le performance */
   will-change: transform, left, top;
 }
 
-/* Miglioramento effetto nemici - semplificato */
+/* Miglioramento effetto nemici - ottimizzato */
 .enemy {
   border-radius: 50%;
   z-index: 5;
   background-color: rgba(255, 0, 0, 0.7);
-  /* Utilizziamo will-change per ottimizzare le performance */
   will-change: transform, left, top;
 }
 
 .enemy-low {
   background-color: rgba(139, 0, 0, 0.7);
-  box-shadow: 0 0 8px #8b0000, 0 0 12px #8b0000;
+  box-shadow: 0 0 6px rgba(139, 0, 0, 0.8);
   border: 1px solid rgba(255, 0, 0, 0.6);
 }
 
 .enemy-medium {
   background-color: rgba(255, 69, 0, 0.7);
-  box-shadow: 0 0 10px #ff4500, 0 0 15px #ff4500;
+  box-shadow: 0 0 8px rgba(255, 69, 0, 0.8);
   border: 1px solid rgba(255, 69, 0, 0.8);
 }
 
 .enemy-high {
   background-color: rgba(255, 0, 0, 0.7);
-  box-shadow: 0 0 12px #ff0000, 0 0 18px #ff0000;
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
   border: 1px solid rgba(255, 0, 0, 1);
-  animation: pulse-enemy 2s infinite alternate; /* Rallentata l'animazione */
+  animation: pulse-enemy 3s infinite alternate; /* Rallentata l'animazione */
 }
 
 @keyframes pulse-enemy {
   0% {
-    box-shadow: 0 0 8px #ff0000, 0 0 12px #ff0000;
+    box-shadow: 0 0 6px rgba(255, 0, 0, 0.7);
   }
   100% {
-    box-shadow: 0 0 12px #ff0000, 0 0 20px #ff0000;
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.9);
   }
 }
 
 .bonus {
   border-radius: 50%;
   background: linear-gradient(to right, #7fff00, #00ff00);
-  box-shadow: 0 0 15px #0f0, 0 0 5px #fff;
-  animation: pulse 2s infinite alternate; /* Rallentata l'animazione */
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+  animation: pulse 3s infinite alternate; /* Rallentata l'animazione */
   z-index: 5;
-  /* Utilizziamo will-change per ottimizzare le performance */
   will-change: transform, left, top;
 }
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.7);
   }
   100% {
-    box-shadow: 0 0 10px #0f0, 0 0 20px #0f0;
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.9);
   }
 }
 
 .obstacle {
   background: rgba(255, 0, 0, 0.7);
-  box-shadow: 0 0 10px red, 0 0 5px #fff;
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.7);
   z-index: 4;
+  will-change: transform;
 }
 
 .trajectory-dot {
   border-radius: 50%;
   pointer-events: none;
   z-index: 3;
+  will-change: transform, opacity;
 }
 
 .cooldown-bar {
@@ -143,11 +143,11 @@ body {
 }
 
 .cooldown-progress {
-  transition: width 0.2s linear; /* Transizione più veloce */
+  transition: width 0.1s linear; /* Transizione più veloce */
 }
 
 .cooldown-label {
-  text-shadow: 0 0 5px #0f0;
+  text-shadow: 0 0 3px #0f0;
   font-weight: bold;
   letter-spacing: 1px;
   color: #fff;
@@ -156,7 +156,7 @@ body {
 .info-text {
   color: #0f0;
   font-weight: bold;
-  text-shadow: 0 0 5px #0f0;
+  text-shadow: 0 0 3px #0f0;
 }
 
 /* Animazioni ottimizzate */
