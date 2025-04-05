@@ -411,25 +411,25 @@ function App() {
         let newVy = (enemy.vy + ay * baseAccel) * ENEMY_FRICTION;
         
         // Applica velocità alla posizione del nemico
-        let newX = enemy.x + newVx;
-        let newY = enemy.y + newVy;
+        let newX2 = enemy.x + newVx;
+        let newY2 = enemy.y + newVy;
         
         // Controlla collisioni con i muri
-        if (isPointInWall({ x: newX, y: newY }, walls)) {
-          newX = enemy.x;
-          newY = enemy.y;
+        if (isPointInWall({ x: newX2, y: newY2 }, walls)) {
+          newX2 = enemy.x;
+          newY2 = enemy.y;
           newVx = -enemy.vx * 0.5; // Rimbalza leggermente
           newVy = -enemy.vy * 0.5;
         }
         
         // Applica limiti dell'area di gioco
-        newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX));
-        newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY));
+        newX2 = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX2));
+        newY2 = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY2));
         
         return {
           ...enemy,
-          x: newX,
-          y: newY,
+          x: newX2,
+          y: newY2,
           vx: newVx,
           vy: newVy,
           direction: newDirection,
