@@ -16,11 +16,20 @@ const WIGGLE_SPEED = 0.1
 const BONUS_SIZES = [6, 10, 14] // Dimensioni possibili per i bonus (piccolo, medio, grande)
 const PLAYER_RADIUS = 4
 const PLAYER_FRICTION = 0.97 // Frizione del giocatore (usata per traiettoria)
+const AUTO_ATTRACTION_RADIUS = 10 // Raggio entro cui il bonus viene attratto automaticamente
+const AUTO_ATTRACTION_SPEED = 1.5 // Velocità di attrazione automatica
+
+// Costanti per gli ostacoli
+const OBSTACLE_SIZE = 16 // Dimensione degli ostacoli
+const OBSTACLE_AVOIDANCE_RADIUS = 40 // Raggio entro cui i nemici intelligenti iniziano a evitare
 
 // Slow Motion Constants
 const SLOW_MOTION_DURATION_FRAMES = 3 * 60; // 3 secondi a 60fps
 const SLOW_MOTION_COOLDOWN_FRAMES = 10 * 60; // 10 secondi a 60fps
 const SLOW_MOTION_FACTOR = 0.3; // Rallenta i nemici al 30% della velocità
+const PLAYER_SLOW_MOTION_FACTOR = 0.7; // Rallenta il giocatore al 70% (meno dei nemici)
+const BONUS_ATTRACTION_RADIUS = 50; // Raggio entro cui il bonus viene attratto al giocatore
+const BONUS_ATTRACTION_SPEED = 0.8; // Velocità di attrazione del bonus
 
 // Trajectory Constants
 const TRAJECTORY_LENGTH = 100;       // Lunghezza max della previsione in px
@@ -29,6 +38,9 @@ const TRAJECTORY_DASH_SKIP = 3;      // Renderizza un punto ogni N passi
 const TRAJECTORY_DOT_SIZE = 2;       // Raggio dei punti della traiettoria
 const TRAJECTORY_HOMING_RADIUS = 200; // Raggio entro cui la traiettoria si aggancia al bonus
 const TRAJECTORY_HOMING_ACCEL_FACTOR = 1.5; // Moltiplicatore accelerazione verso bonus
+
+// Definizione dei livelli di intelligenza
+const INTELLIGENCE_LEVELS = { low: 'low', medium: 'medium', high: 'high' };
 
 // Funzione per assegnare un ruolo casuale
 const getRandomRole = () => {
@@ -54,6 +66,11 @@ const getRandomPatrolPoint = () => ({
 const createEnemy = () => {
   const speedKeys = Object.keys(SPEED_MULTIPLIERS);
   const randomSpeedKey = speedKeys[Math.floor(Math.random() * speedKeys.length)];
+  
+  // Assegna casualmente un livello di intelligenza
+  const intelligenceKeys = Object.keys(INTELLIGENCE_LEVELS);
+  const randomIntelligenceKey = intelligenceKeys[Math.floor(Math.random() * intelligenceKeys.length)];
+  
   return {
     x: Math.random() * GAME_WIDTH,
     y: Math.random() * GAME_HEIGHT,
@@ -61,7 +78,45 @@ const createEnemy = () => {
     vx: 0, vy: 0,
     isEngaged: false,
     patrolTarget: null,
-    speedMultiplier: SPEED_MULTIPLIERS[randomSpeedKey] // Assegna moltiplicatore velocità
+    speedMultiplier: SPEED_MULTIPLIERS[randomSpeedKey], // Assegna moltiplicatore velocità
+    intelligence: INTELLIGENCE_LEVELS[randomIntelligenceKey] // Assegna livello di intelligenza
+  };
+};
+
+// Funzione per la collisione elastica tra due moscerini
+const resolveCollision = (enemy1, enemy2) => {
+  // Vettore della differenza di posizione
+  const dx = enemy2.x - enemy1.x;
+  const dy = enemy2.y - enemy1.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  // Normalizzazione del vettore
+  const nx = dx / distance;
+  const ny = dy / distance;
+  
+  // Differenza della velocità lungo il vettore normale
+  const dvx = enemy2.vx - enemy1.vx;
+  const dvy = enemy2.vy - enemy1.vy;
+  const dotProduct = nx * dvx + ny * dvy;
+  
+  // Se i due oggetti si stanno allontanando, non applicare impulso
+  if (dotProduct > 0) return { enemy1, enemy2 };
+  
+  // Coefficiente di rimbalzo (1 = perfettamente elastico)
+  const restitution = 0.8;
+  
+  // Calcolo dell'impulso
+  const impulse = (-(1 + restitution) * dotProduct) / 2;
+  
+  // Applicazione dell'impulso ai vettori velocità
+  const enemy1NewVx = enemy1.vx - impulse * nx;
+  const enemy1NewVy = enemy1.vy - impulse * ny;
+  const enemy2NewVx = enemy2.vx + impulse * nx;
+  const enemy2NewVy = enemy2.vy + impulse * ny;
+  
+  return {
+    enemy1: { ...enemy1, vx: enemy1NewVx, vy: enemy1NewVy },
+    enemy2: { ...enemy2, vx: enemy2NewVx, vy: enemy2NewVy }
   };
 };
 
@@ -77,6 +132,9 @@ function App() {
   const [isSlowMotionActive, setIsSlowMotionActive] = useState(false)
   const [slowMotionDurationTimer, setSlowMotionDurationTimer] = useState(0)
   const [slowMotionCooldownTimer, setSlowMotionCooldownTimer] = useState(0)
+  // Stati per livelli e ostacoli
+  const [obstacles, setObstacles] = useState([])
+  const [level, setLevel] = useState(1)
 
   // Funzione per generare una nuova posizione e dimensione del bonus
   const generateNewBonus = () => ({
@@ -85,10 +143,65 @@ function App() {
     size: BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)]
   })
 
+  // Funzione per generare un nuovo ostacolo in posizione non sovrapposta ad altri elementi
+  const generateNewObstacle = () => {
+    let newObstacle;
+    let isValid = false;
+    
+    // Tenta di generare una posizione valida (non sovrapposta)
+    while (!isValid) {
+      newObstacle = {
+        x: Math.random() * (GAME_WIDTH - OBSTACLE_SIZE - 20) + 10,
+        y: Math.random() * (GAME_HEIGHT - OBSTACLE_SIZE - 20) + 10
+      };
+      
+      isValid = true;
+      
+      // Controlla sovrapposizione con il giocatore
+      if (distance(newObstacle, position) < 50) {
+        isValid = false;
+        continue;
+      }
+      
+      // Controlla sovrapposizione con il bonus
+      if (bonusPosition && distance(newObstacle, bonusPosition) < 30) {
+        isValid = false;
+        continue;
+      }
+      
+      // Controlla sovrapposizione con altri ostacoli
+      for (const obstacle of obstacles) {
+        if (
+          Math.abs(obstacle.x - newObstacle.x) < OBSTACLE_SIZE * 1.5 && 
+          Math.abs(obstacle.y - newObstacle.y) < OBSTACLE_SIZE * 1.5
+        ) {
+          isValid = false;
+          break;
+        }
+      }
+    }
+    
+    return newObstacle;
+  };
+
   // Effetto per generare il primo bonus al mount
   useEffect(() => {
     setBonusPosition(generateNewBonus())
   }, [])
+
+  // Controlla se è necessario aumentare di livello
+  useEffect(() => {
+    const newLevel = Math.floor(score / 5) + 1;
+    
+    if (newLevel > level) {
+      setLevel(newLevel);
+      
+      // Aggiungi un nuovo ostacolo per il nuovo livello
+      if (newLevel > 1) { // Dal livello 2 in poi
+        setObstacles(prev => [...prev, generateNewObstacle()]);
+      }
+    }
+  }, [score, level]);
 
   const resetGame = () => {
     setPosition({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
@@ -100,12 +213,43 @@ function App() {
     setIsSlowMotionActive(false)
     setSlowMotionDurationTimer(0)
     setSlowMotionCooldownTimer(0)
+    // Resetta livello e ostacoli
+    setLevel(1)
+    setObstacles([])
   }
+
+  // Controlla se un punto è dentro un ostacolo
+  const isPointInObstacle = (point, obstacle) => {
+    return (
+      point.x >= obstacle.x - OBSTACLE_SIZE/2 && 
+      point.x <= obstacle.x + OBSTACLE_SIZE/2 &&
+      point.y >= obstacle.y - OBSTACLE_SIZE/2 && 
+      point.y <= obstacle.y + OBSTACLE_SIZE/2
+    );
+  };
+
+  // Calcola vettore di evitamento per un ostacolo
+  const calculateAvoidanceVector = (entity, obstacle) => {
+    const dx = entity.x - obstacle.x;
+    const dy = entity.y - obstacle.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist === 0) return { x: 1, y: 0 }; // Evita divisione per zero
+    
+    // Normalizza e scala in base alla distanza
+    const strength = Math.min(1.0, OBSTACLE_AVOIDANCE_RADIUS / dist);
+    return {
+      x: (dx / dist) * strength,
+      y: (dy / dist) * strength
+    };
+  };
 
   const updatePhysics = useCallback(() => {
     // Determina il fattore di scala temporale
     const timeScale = isSlowMotionActive ? SLOW_MOTION_FACTOR : 1.0
-
+    // Fattore di scala temporale per il giocatore (diverso dai nemici)
+    const playerTimeScale = isSlowMotionActive ? PLAYER_SLOW_MOTION_FACTOR : 1.0
+    
     // --- Aggiornamento Moscerino ---
     let ax_player = 0
     let ay_player = 0
@@ -130,8 +274,9 @@ function App() {
     })
     setPosition(pos => {
       if (Math.abs(velocity.x) < 0.01 && Math.abs(velocity.y) < 0.01) return pos
-      let newX = pos.x + velocity.x
-      let newY = pos.y + velocity.y
+      // Applica il timeScale del giocatore alla velocità
+      let newX = pos.x + velocity.x * playerTimeScale
+      let newY = pos.y + velocity.y * playerTimeScale
       newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX))
       newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY))
       return { x: newX, y: newY }
@@ -143,6 +288,17 @@ function App() {
 
     let enemiesNeedsUpdate = [...enemies]; // Copia per modificare patrolTarget
 
+    // Primo passo: filtra eventuali nemici che hanno colpito ostacoli
+    enemiesNeedsUpdate = enemiesNeedsUpdate.filter(enemy => {
+      // Controlla collisioni con ostacoli
+      for (const obstacle of obstacles) {
+        if (isPointInObstacle(enemy, obstacle)) {
+          return false; // Nemico eliminato
+        }
+      }
+      return true;
+    });
+
     enemiesNeedsUpdate = enemiesNeedsUpdate.map((enemy, index) => {
       let targetX = predictedX
       let targetY = predictedY
@@ -152,7 +308,65 @@ function App() {
       let nextIsEngaged = enemy.isEngaged;
       let nextPatrolTarget = enemy.patrolTarget; // Mantiene target pattuglia
 
-      // Logica target basata sul ruolo
+      // Modifica del target in base al livello di intelligenza
+      if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
+        // Poco intelligenti: inseguimento diretto del giocatore
+        targetX = position.x;
+        targetY = position.y;
+        
+      } else if (enemy.intelligence === INTELLIGENCE_LEVELS.medium) {
+        // Intelligenti: anticipano le mosse del giocatore
+        // Calcola una posizione anticipata basata sul movimento e velocità attuali
+        const anticipationFactor = 25 + Math.random() * 15; // Più randomico di PREDICTION_FACTOR
+        targetX = position.x + velocity.x * anticipationFactor;
+        targetY = position.y + velocity.y * anticipationFactor;
+        
+        // Aggiungi un po' di randomicità per simulare l'intelligenza
+        targetX += (Math.random() - 0.5) * 40;
+        targetY += (Math.random() - 0.5) * 40;
+        
+      } else if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
+        // Molto intelligenti: comportamento strategico
+        if (bonusPosition) {
+          // Calcola la direzione dal giocatore al bonus
+          const towardsBonusX = bonusPosition.x - position.x;
+          const towardsBonusY = bonusPosition.y - position.y;
+          const distToBonus = Math.sqrt(towardsBonusX * towardsBonusX + towardsBonusY * towardsBonusY);
+          
+          if (distToBonus > 0 && distToBonus < 200) {
+            // Il giocatore sembra dirigersi verso il bonus: intercetta
+            // Cerca di mettersi tra il giocatore e il bonus
+            const interceptX = position.x + (towardsBonusX / distToBonus) * (distToBonus * 0.7);
+            const interceptY = position.y + (towardsBonusY / distToBonus) * (distToBonus * 0.7);
+            
+            targetX = interceptX;
+            targetY = interceptY;
+          } else {
+            // Anticipa le mosse del giocatore in modo avanzato
+            const advancedAnticipationFactor = 30 + Math.random() * 20;
+            
+            // Prova a predire dove il giocatore andrà in base alla sua direzione attuale
+            // Aggiungi un po' di casualità per simulare "intuizione"
+            const directionChangeProbability = Math.random();
+            
+            if (directionChangeProbability > 0.7) {
+              // Simula che il nemico "preveda" un cambio di direzione
+              targetX = position.x - velocity.x * advancedAnticipationFactor;
+              targetY = position.y - velocity.y * advancedAnticipationFactor;
+            } else {
+              // Usa la previsione normale ma migliorata
+              targetX = position.x + velocity.x * advancedAnticipationFactor;
+              targetY = position.y + velocity.y * advancedAnticipationFactor;
+            }
+            
+            // Aggiungi randomicità per comportamento più imprevedibile
+            targetX += (Math.random() - 0.5) * 30;
+            targetY += (Math.random() - 0.5) * 30;
+          }
+        }
+      }
+
+      // Logica target basata sul ruolo (sovrascrive il target di intelligenza in casi specifici)
       if (enemy.role === 'guard' && bonusPosition) {
         const playerDistToBonus = distance(position, bonusPosition)
         const enemyDistToBonus = distance(enemy, bonusPosition)
@@ -234,6 +448,48 @@ function App() {
         }
       }
       
+      // Evitamento ostacoli per nemici intelligenti e molto intelligenti
+      if (enemy.intelligence === INTELLIGENCE_LEVELS.medium || 
+          enemy.intelligence === INTELLIGENCE_LEVELS.high) {
+        // Calcola vettori di evitamento per tutti gli ostacoli vicini
+        let avoidX = 0;
+        let avoidY = 0;
+        
+        for (const obstacle of obstacles) {
+          const obstacleDistance = distance(enemy, obstacle);
+          
+          if (obstacleDistance < OBSTACLE_AVOIDANCE_RADIUS) {
+            const avoidVector = calculateAvoidanceVector(enemy, obstacle);
+            const avoidStrength = enemy.intelligence === INTELLIGENCE_LEVELS.high ? 1.5 : 1.0;
+            
+            avoidX += avoidVector.x * avoidStrength;
+            avoidY += avoidVector.y * avoidStrength;
+          }
+        }
+        
+        // Combina vettore di avoidance con la direzione corrente
+        if (avoidX !== 0 || avoidY !== 0) {
+          // Normalizza il vettore di evitamento
+          const avoidMagnitude = Math.sqrt(avoidX * avoidX + avoidY * avoidY);
+          if (avoidMagnitude > 0) {
+            avoidX /= avoidMagnitude;
+            avoidY /= avoidMagnitude;
+          }
+          
+          // Mix evitamento con accelerazione originale
+          const mixFactor = enemy.intelligence === INTELLIGENCE_LEVELS.high ? 0.7 : 0.5;
+          accelX = accelX * (1 - mixFactor) + avoidX * mixFactor;
+          accelY = accelY * (1 - mixFactor) + avoidY * mixFactor;
+          
+          // Rinormalizza
+          const newAccelMagnitude = Math.sqrt(accelX * accelX + accelY * accelY);
+          if (newAccelMagnitude > 0) {
+            accelX /= newAccelMagnitude;
+            accelY /= newAccelMagnitude;
+          }
+        }
+      }
+      
       // Aggiorna velocità del nemico con inerzia
       let newVx = (enemy.vx + accelX * currentAccelerationFactor) * ENEMY_FRICTION
       let newVy = (enemy.vy + accelY * currentAccelerationFactor) * ENEMY_FRICTION
@@ -244,52 +500,115 @@ function App() {
       let newX = enemy.x + newVx * timeScale
       let newY = enemy.y + newVy * timeScale
 
-      // Evita sovrapposizioni tra nemici (ridotto effetto)
-      enemiesNeedsUpdate.forEach((otherEnemy, otherIndex) => {
-        if (index !== otherIndex) {
-          const checkX = (otherIndex > index) ? otherEnemy.x : newX // Usa posizioni già aggiornate se disponibili
-          const checkY = (otherIndex > index) ? otherEnemy.y : newY
-          const currentX = (otherIndex > index) ? newX : otherEnemy.x
-          const currentY = (otherIndex > index) ? newY : otherEnemy.y
+      // Applica limiti di bordo
+      newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX))
+      newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY))
+
+      // Ritorna il nemico aggiornato senza ancora risolvere collisioni
+      return { 
+        ...enemy, 
+        x: newX, 
+        y: newY, 
+        vx: newVx, 
+        vy: newVy, 
+        isEngaged: nextIsEngaged, 
+        patrolTarget: nextPatrolTarget 
+      } 
+    });
+
+    // Secondo passo: Risolvi le collisioni tra nemici con rimbalzo
+    for (let i = 0; i < enemiesNeedsUpdate.length; i++) {
+      for (let j = i + 1; j < enemiesNeedsUpdate.length; j++) {
+        const enemy1 = enemiesNeedsUpdate[i];
+        const enemy2 = enemiesNeedsUpdate[j];
+        
+        // Calcola distanza tra i due nemici
+        const dx = enemy2.x - enemy1.x;
+        const dy = enemy2.y - enemy1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Raggio totale (diametro di ciascun nemico)
+        const totalRadius = PLAYER_RADIUS * 2;
+        
+        // Se c'è collisione
+        if (dist < totalRadius) {
+          // Applica rimbalzo elastico
+          const result = resolveCollision(enemy1, enemy2);
           
-          const distX = checkX - currentX;
-          const distY = checkY - currentY;
-          let dist = Math.sqrt(distX * distX + distY * distY)
-          dist = dist === 0 ? 1 : dist
-          if (dist < 12) { // Ancora più vicini possibili
-            const force = (12 - dist) * 0.05; // Forza di separazione debole
-            if (otherIndex > index) {
-                // Modifica nemico corrente in base a quello già aggiornato
-                 newX -= (distX / dist) * force;
-                 newY -= (distY / dist) * force;
-            } else {
-               // Modifica nemico già aggiornato in base a quello corrente (più complesso, per ora no)
-               // Potrebbe richiedere un ciclo while o più passate
-            } 
+          // Aggiorna le velocità
+          enemiesNeedsUpdate[i] = { ...result.enemy1 };
+          enemiesNeedsUpdate[j] = { ...result.enemy2 };
+          
+          // Risolvi sovrapposizione
+          const overlap = (totalRadius - dist) / 2;
+          if (dist > 0) {  // Evita divisione per zero
+            const nx = dx / dist;
+            const ny = dy / dist;
+            
+            // Sposta ogni nemico nella direzione opposta
+            enemiesNeedsUpdate[i].x -= nx * overlap;
+            enemiesNeedsUpdate[i].y -= ny * overlap;
+            enemiesNeedsUpdate[j].x += nx * overlap;
+            enemiesNeedsUpdate[j].y += ny * overlap;
+            
+            // Riapplica limiti bordo dopo la risoluzione della sovrapposizione
+            enemiesNeedsUpdate[i].x = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, enemiesNeedsUpdate[i].x));
+            enemiesNeedsUpdate[i].y = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, enemiesNeedsUpdate[i].y));
+            enemiesNeedsUpdate[j].x = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, enemiesNeedsUpdate[j].x));
+            enemiesNeedsUpdate[j].y = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, enemiesNeedsUpdate[j].y));
           }
         }
-      })
-
-      // Riapplica limiti dopo separazione
-       newX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, newX))
-       newY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, newY))
-
-      // Ritorna lo stato aggiornato del nemico (inclusa velocità e stato engaged)
-      return { ...enemy, x: newX, y: newY, vx: newVx, vy: newVy, isEngaged: nextIsEngaged, patrolTarget: nextPatrolTarget } 
-    })
+      }
+    }
 
     // Aggiorna lo stato principale dei nemici
     setEnemies(enemiesNeedsUpdate);
 
-    // --- Controlla raccolta bonus ---
+    // --- Attrazione e raccolta bonus ---
     if (bonusPosition) {
+      // Controlla se il bonus deve essere attratto verso il giocatore
+      const distToBonus = distance(bonusPosition, position);
+      
+      // Attrazione automatica sempre attiva entro 10px
+      const isInAutoRange = distToBonus < AUTO_ATTRACTION_RADIUS;
+      // Attrazione speciale in slow motion entro 50px
+      const isInSlowMotionRange = isSlowMotionActive && distToBonus < BONUS_ATTRACTION_RADIUS;
+      
+      if (isInAutoRange || isInSlowMotionRange) {
+        // Calcola vettore direzione dal bonus al giocatore
+        const dx = position.x - bonusPosition.x;
+        const dy = position.y - bonusPosition.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        
+        // Determina la velocità di attrazione in base al contesto
+        let attractionSpeed;
+        if (isInAutoRange) {
+          // Attrazione automatica più forte
+          attractionSpeed = AUTO_ATTRACTION_SPEED;
+        } else {
+          // Attrazione di slow motion più debole ma con raggio maggiore
+          attractionSpeed = BONUS_ATTRACTION_SPEED * (1 - distToBonus / BONUS_ATTRACTION_RADIUS);
+        }
+        
+        // Applica movimento di attrazione
+        const newBonusX = bonusPosition.x + (dx / len) * attractionSpeed;
+        const newBonusY = bonusPosition.y + (dy / len) * attractionSpeed;
+        
+        // Aggiorna la posizione del bonus
+        setBonusPosition({
+          ...bonusPosition,
+          x: newBonusX,
+          y: newBonusY
+        });
+      }
+      
       // Usa la dimensione del bonus per la collisione
       const collisionDistance = PLAYER_RADIUS + bonusPosition.size / 2;
-      const dist = distance(bonusPosition, position)
+      const dist = distance(bonusPosition, position);
       if (dist < collisionDistance) {
-        setScore(score + 1)
-        setEnemies(prevEnemies => [...prevEnemies, createEnemy()]) // Usa createEnemy
-        setBonusPosition(generateNewBonus())
+        setScore(score + 1);
+        setEnemies(prevEnemies => [...prevEnemies, createEnemy()]);
+        setBonusPosition(generateNewBonus());
       }
     }
 
@@ -301,7 +620,15 @@ function App() {
       }
     })
 
-  }, [keys, velocity, position, enemies, bonusPosition, score, isSlowMotionActive]) // Aggiunta dipendenza isSlowMotionActive
+    // --- Controlla collisione giocatore-ostacolo ---
+    for (const obstacle of obstacles) {
+      if (isPointInObstacle(position, obstacle)) {
+        resetGame();
+        break;
+      }
+    }
+
+  }, [keys, velocity, position, enemies, bonusPosition, score, isSlowMotionActive, obstacles, level]) // Aggiunta dipendenze
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -440,6 +767,21 @@ function App() {
       position: 'relative',
       border: '1px solid black'
     }}>
+      {/* Indicatore di livello */}
+      <div id="level" style={{
+        position: 'absolute',
+        top: '10px',
+        left: '10px',
+        fontSize: '16px',
+        fontWeight: 'bold',
+        color: 'black',
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        border: '1px solid #333',
+        zIndex: 20
+      }}>Livello: {level}</div>
+      
       <div id="score">Punti: {score}</div>
       {/* Barra Slow Motion e testo */}
       <div style={{ position: 'absolute', top: '10px', right: '10px', textAlign: 'right' }}>
@@ -482,6 +824,19 @@ function App() {
         </div>
       </div>
       
+      {/* Ostacoli */}
+      {obstacles.map((obstacle, index) => (
+        <div key={`obstacle-${index}`} style={{
+          position: 'absolute',
+          width: `${OBSTACLE_SIZE}px`,
+          height: `${OBSTACLE_SIZE}px`,
+          backgroundColor: 'red',
+          left: `${obstacle.x - OBSTACLE_SIZE/2}px`,
+          top: `${obstacle.y - OBSTACLE_SIZE/2}px`,
+          zIndex: 4
+        }} />
+      ))}
+      
       {/* Moscerino */}
       <div style={{
         width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: 'black',
@@ -494,13 +849,29 @@ function App() {
       {enemies.map((enemy, index) => {
         const enemyWiggleX = Math.sin(frame * WIGGLE_SPEED * 0.9 + index * 0.5) * WIGGLE_AMOUNT * 0.8;
         const enemyWiggleY = Math.cos(frame * WIGGLE_SPEED * 0.7 + index * 0.6) * WIGGLE_AMOUNT * 0.8;
-        // Determina colore in base alla velocità
+        
+        // Determina colore in base alla velocità e intelligenza
         let enemyColor = 'orange'; // Default medio
+        
         if (enemy.speedMultiplier < SPEED_MULTIPLIERS.medium) {
-            enemyColor = 'gold'; // Cambiato in gold
+            enemyColor = 'gold'; // Più lento
         } else if (enemy.speedMultiplier > SPEED_MULTIPLIERS.medium) {
-            enemyColor = 'red';
+            enemyColor = 'red'; // Più veloce
         }
+        
+        // Modificatore del colore in base all'intelligenza
+        if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
+            // Rendi il colore più scuro per nemici intelligenti
+            if (enemyColor === 'gold') enemyColor = 'goldenrod';
+            else if (enemyColor === 'orange') enemyColor = 'darkorange';
+            else if (enemyColor === 'red') enemyColor = 'darkred';
+        } else if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
+            // Rendi il colore più chiaro per nemici poco intelligenti
+            if (enemyColor === 'gold') enemyColor = 'palegoldenrod';
+            else if (enemyColor === 'orange') enemyColor = 'peachpuff';
+            else if (enemyColor === 'red') enemyColor = 'salmon';
+        }
+        
         return (
           <div key={index} style={{
             width: `${PLAYER_RADIUS * 2}px`, height: `${PLAYER_RADIUS * 2}px`, backgroundColor: enemyColor, // Usa colore dinamico
