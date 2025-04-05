@@ -931,8 +931,7 @@ function App() {
         fontFamily: 'monospace',
         fontWeight: 'bold',
         fontSize: '36px',
-        letterSpacing: '2px',
-        animation: 'glitch 0.3s infinite',
+        letterSpacing: '2px'
       }}>
         THE CHOSEN ONE
       </div>
