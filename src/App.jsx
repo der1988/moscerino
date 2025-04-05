@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import './App.css'
 
 const GAME_WIDTH = 800
@@ -41,6 +41,9 @@ const TRAJECTORY_HOMING_ACCEL_FACTOR = 1.5; // Moltiplicatore accelerazione vers
 
 // Definizione dei livelli di intelligenza
 const INTELLIGENCE_LEVELS = { low: 'low', medium: 'medium', high: 'high' };
+
+// Caratteri per la pioggia Matrix
+const MATRIX_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{};:,./<>?゠アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
 
 // Funzione per assegnare un ruolo casuale
 const getRandomRole = () => {
@@ -209,6 +212,14 @@ function App() {
   // Matrix decoration states
   const [matrixPattern, setMatrixPattern] = useState(MATRIX_PATTERNS[0]);
   const [matrixID, setMatrixID] = useState(generateMatrixID());
+
+  // Riferimenti e memo
+  const requestRef = useRef();
+  const previousTimeRef = useRef();
+  const lastBonusTimeRef = useRef(0);
+  
+  // Stato per i caratteri della pioggia Matrix
+  const [rainColumns, setRainColumns] = useState([]);
 
   // Funzione per generare una nuova posizione e dimensione del bonus
   const generateNewBonus = () => ({
@@ -858,223 +869,242 @@ function App() {
     };
   }, []);
 
+  // Genera colonne di pioggia Matrix
+  useEffect(() => {
+    const columns = [];
+    const screenWidth = window.innerWidth;
+    const numColumns = Math.floor(screenWidth / 20); // 20px per colonna
+    
+    for (let i = 0; i < numColumns; i++) {
+      const speed = 1 + Math.random() * 3; // Velocità casuale
+      const numChars = 10 + Math.floor(Math.random() * 20); // Numero casuale di caratteri
+      const delay = Math.random() * 15; // Ritardo casuale
+      const chars = [];
+      
+      for (let j = 0; j < numChars; j++) {
+        chars.push({
+          char: MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)],
+          highlight: Math.random() < 0.1 // 10% di probabilità di essere evidenziato
+        });
+      }
+      
+      columns.push({
+        id: i,
+        x: i * 20,
+        speed,
+        animationDuration: `${15 / speed}s`,
+        animationDelay: `${delay}s`,
+        chars
+      });
+    }
+    
+    setRainColumns(columns);
+    
+    // Aggiorna i caratteri ogni 5 secondi
+    const intervalId = setInterval(() => {
+      setRainColumns(prev => prev.map(col => {
+        return {
+          ...col,
+          chars: col.chars.map(c => ({
+            char: MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)],
+            highlight: Math.random() < 0.1
+          }))
+        };
+      }));
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
+
   return (
-    <div style={{
-      maxWidth: `${GAME_WIDTH}px`,
-      margin: '0 auto',
-      fontFamily: 'Courier New, monospace'
+    <div style={{ 
+      width: '100%', 
+      height: '100vh',
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      flexDirection: 'column'
     }}>
       {/* Effetto pioggia di codice Matrix */}
-      <div className="digital-rain"></div>
+      <div className="digital-rain">
+        {rainColumns.map(column => (
+          <div
+            key={`col-${column.id}`}
+            className="rain-column"
+            style={{
+              left: `${column.x}px`,
+              animationDuration: column.animationDuration,
+              animationDelay: column.animationDelay
+            }}
+          >
+            {column.chars.map((c, i) => (
+              <div 
+                key={`char-${column.id}-${i}`} 
+                className={`rain-char ${c.highlight ? 'highlight' : ''}`}
+              >
+                {c.char}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
       
       {/* Titolo in stile Matrix */}
       <div style={{
-        padding: '5px', 
         color: '#0f0',
-        textShadow: '0 0 5px #0f0',
-        fontSize: '12px',
-        textAlign: 'center'
+        textShadow: '0 0 10px #0f0, 0 0 5px #fff',
+        marginBottom: '20px',
+        zIndex: 2,
+        fontFamily: 'monospace',
+        fontWeight: 'bold',
+        fontSize: '36px',
+        letterSpacing: '2px',
+        animation: 'glitch 0.3s infinite',
       }}>
-        <div style={{animation: 'glitch 1s infinite'}}>{matrixPattern}</div>
-        <div style={{letterSpacing: '1px'}}>THE MATRIX // OPERAZIONE MOSCERINO // ID:{matrixID}</div>
-        <div>{matrixPattern}</div>
+        MATRIX MOSQUITO
       </div>
       
-      {/* Barra UI superiore */}
-      <div className="ui-bar" style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '10px 15px'
-      }}>
-        {/* Indicatori di gioco con stile Matrix */}
-        <div style={{
-          display: 'flex',
-          gap: '20px',
-          fontSize: '16px',
-          fontWeight: 'bold'
+      {/* Container principale */}
+      <div className="game-container" style={{ width: GAME_WIDTH, height: GAME_HEIGHT + 40 }}>
+        {/* UI Bar */}
+        <div className="ui-bar" style={{ 
+          height: '40px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          padding: '0 10px' 
         }}>
-          <span className="info-text">LEVEL::{level}</span>
-          <span className="info-text">SCORE::{score}</span>
-          <span className="info-text">BEST::{highScore}</span>
-        </div>
-        
-        {/* Barra Slow Motion */}
-        <div style={{ textAlign: 'right' }}>
-          <div className="cooldown-bar" style={{ 
-            width: '100px', 
-            height: '20px', 
-            display: 'inline-block',
-            position: 'relative'
+          <div className="info-text" style={{ 
+            fontSize: '14px', 
+            minWidth: '100px', 
+            textAlign: 'left'
           }}>
-            <div className="cooldown-progress" style={{ 
-              width: `${cooldownPercent}%`, 
-              height: '100%', 
-              backgroundColor: isSlowMotionActive ? '#00FFFF' : (slowMotionCooldownTimer <= 0 ? '#00FF00' : '#00AA00')
-            }} />
-            <span className="cooldown-label" style={{ 
-              position: 'absolute', 
-              left: '50%', 
-              top: '50%', 
-              transform: 'translate(-50%, -50%)', 
-              fontSize: '12px',
-              pointerEvents: 'none'
-            }}>
-              {isSlowMotionActive ? "MATRIX MODE" : "MATRIX"}
-            </span>
+            LEVEL: {level}
           </div>
+          
+          <div className="info-text" style={{ 
+            fontSize: '14px', 
+            flex: 1, 
+            textAlign: 'center' 
+          }}>
+            SCORE: {score} | HIGH: {highScore}
+          </div>
+          
           <div style={{ 
-            fontSize: '10px', 
-            color: '#0f0',
-            marginTop: '2px',
-            width: '100px',
-            textAlign: 'center'
+            display: 'flex', 
+            alignItems: 'center', 
+            minWidth: '250px', 
+            justifyContent: 'flex-end' 
           }}>
-            [ SPACEBAR ]
+            <span className="cooldown-label" style={{ 
+              fontSize: '12px', 
+              marginRight: '5px' 
+            }}>
+              MATRIX MODE:
+            </span>
+            <div className="cooldown-bar" style={{ width: '120px', height: '15px' }}>
+              <div className="cooldown-progress" style={{ 
+                width: `${isSlowMotionActive 
+                  ? `${(1 - slowMotionDurationTimer / SLOW_MOTION_DURATION_FRAMES) * 100}%` 
+                  : slowMotionCooldownTimer === 0 
+                    ? '100%' 
+                    : `${(1 - slowMotionCooldownTimer / SLOW_MOTION_COOLDOWN_FRAMES) * 100}%`
+                }`, 
+                height: '100%', 
+                backgroundColor: isSlowMotionActive ? '#0ff' : '#0f0',
+                boxShadow: `0 0 5px ${isSlowMotionActive ? '#0ff' : '#0f0'}`
+              }}></div>
+            </div>
           </div>
         </div>
-      </div>
-      
-      {/* Area di gioco */}
-      <div className="game-area" style={{
-        width: `${GAME_WIDTH}px`,
-        height: `${GAME_HEIGHT}px`
-      }}>
-        {/* Griglia di sfondo in stile Matrix */}
-        <div className="grid-background"></div>
         
-        {/* Codice Matrix decorativo sullo sfondo */}
-        <div style={{
-          position: 'absolute',
-          top: '10px',
-          left: '10px',
-          fontSize: '10px',
-          color: 'rgba(0, 255, 0, 0.2)',
-          zIndex: 2,
-          pointerEvents: 'none',
-          textAlign: 'left',
-          width: '200px'
-        }}>
-          {Array(10).fill().map((_, i) => (
-            <div key={`matrix-code-${i}`}>
-              {Array(20).fill().map((_, j) => getMatrixChar()).join('')}
-            </div>
-          ))}
-        </div>
-        
-        <div style={{
-          position: 'absolute',
-          bottom: '10px',
-          right: '10px',
-          fontSize: '10px',
-          color: 'rgba(0, 255, 0, 0.2)',
-          zIndex: 2,
-          pointerEvents: 'none',
-          textAlign: 'right',
-          width: '200px'
-        }}>
-          {Array(10).fill().map((_, i) => (
-            <div key={`matrix-code2-${i}`}>
-              {Array(20).fill().map((_, j) => getMatrixChar()).join('')}
-            </div>
-          ))}
-        </div>
-        
-        {/* Ostacoli */}
-        {obstacles.map((obstacle, index) => (
-          <div key={`obstacle-${index}`} className="obstacle" style={{
-            position: 'absolute',
-            width: `${OBSTACLE_SIZE}px`,
-            height: `${OBSTACLE_SIZE}px`,
-            left: `${obstacle.x - OBSTACLE_SIZE/2}px`,
-            top: `${obstacle.y - OBSTACLE_SIZE/2}px`
-          }} />
-        ))}
-        
-        {/* Moscerino (Player) */}
-        <div className="player" style={{
-          width: `${PLAYER_RADIUS * 2}px`, 
-          height: `${PLAYER_RADIUS * 2}px`,
-          position: 'absolute',
-          left: `${position.x - PLAYER_RADIUS + playerWiggleX}px`,
-          top: `${position.y - PLAYER_RADIUS + playerWiggleY}px`,
-          willChange: 'left, top',
-          animation: 'flicker 1.5s ease-in-out infinite'
-        }} />
-        
-        {/* Nemici */}
-        {enemies.map((enemy, index) => {
-          const enemyWiggleX = Math.sin(frame * WIGGLE_SPEED * 0.9 + index * 0.5) * WIGGLE_AMOUNT * 0.8;
-          const enemyWiggleY = Math.cos(frame * WIGGLE_SPEED * 0.7 + index * 0.6) * WIGGLE_AMOUNT * 0.8;
+        {/* Game Area */}
+        <div className="game-area" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
+          {/* Griglia di sfondo */}
+          <div className="grid-background"></div>
           
-          // Determina classe in base all'intelligenza
-          let enemyClass = "enemy enemy-medium";
+          {/* Ostacoli */}
+          {obstacles.map((obs, i) => (
+            <div key={`obstacle-${i}`} className="obstacle" style={{
+              position: 'absolute',
+              left: obs.x,
+              top: obs.y,
+              width: obs.width,
+              height: obs.height
+            }}></div>
+          ))}
           
-          if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
-              enemyClass = "enemy enemy-high";
-          } else if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
-              enemyClass = "enemy enemy-low";
+          {/* Bonus */}
+          {bonusPosition && (
+            <div className="bonus" style={{
+              position: 'absolute',
+              left: bonusPosition.x - bonusPosition.size / 2,
+              top: bonusPosition.y - bonusPosition.size / 2,
+              width: bonusPosition.size,
+              height: bonusPosition.size
+            }}></div>
+          )}
+          
+          {/* Traiettoria */}
+          {isSlowMotionActive && trajectoryPoints.length > 0 && trajectoryPoints
+            .filter((_, index) => index % 2 === 0)
+            .map((point, index, filtered) => {
+              const opacity = 1 - index / filtered.length;
+              const dotColor = point.isHoming ? '#ff0000' : '#aaaaaa';
+              return (
+                <div
+                  key={`trajectory-${index}`} 
+                  className="trajectory-dot"
+                  style={{
+                    position: 'absolute',
+                    left: point.x - TRAJECTORY_DOT_SIZE / 2,
+                    top: point.y - TRAJECTORY_DOT_SIZE / 2,
+                    width: TRAJECTORY_DOT_SIZE,
+                    height: TRAJECTORY_DOT_SIZE,
+                    backgroundColor: dotColor,
+                    opacity: opacity
+                  }}
+                />
+              );
+            })
           }
           
-          return (
-            <div key={index} className={enemyClass} style={{
-              width: `${PLAYER_RADIUS * 2}px`, 
-              height: `${PLAYER_RADIUS * 2}px`,
-              position: 'absolute',
-              left: `${enemy.x - PLAYER_RADIUS + enemyWiggleX}px`,
-              top: `${enemy.y - PLAYER_RADIUS + enemyWiggleY}px`,
-              willChange: 'left, top'
-            }} />
-          );
-        })}
-        
-        {/* Bonus */}
-        {bonusPosition && (
-          <div className="bonus" style={{
-            width: `${bonusPosition.size}px`,
-            height: `${bonusPosition.size}px`,
+          {/* Nemici */}
+          {enemies.map((enemy) => (
+            <div 
+              key={`enemy-${enemy.id}`} 
+              className={`enemy enemy-${enemy.intelligence}`} 
+              style={{
+                position: 'absolute',
+                left: enemy.x - PLAYER_RADIUS,
+                top: enemy.y - PLAYER_RADIUS,
+                width: PLAYER_RADIUS * 2,
+                height: PLAYER_RADIUS * 2
+              }}
+            ></div>
+          ))}
+          
+          {/* Giocatore */}
+          <div className="player" style={{
             position: 'absolute',
-            left: `${bonusPosition.x - bonusPosition.size / 2}px`,
-            top: `${bonusPosition.y - bonusPosition.size / 2}px`
-          }} />
-        )}
-        
-        {/* Traiettoria */}
-        {isSlowMotionActive && trajectoryPoints.length > 0 && (
-            trajectoryPoints
-                .filter((_, index) => index % TRAJECTORY_DASH_SKIP === 0) 
-                .map((point, index, filteredArray) => {
-                    const opacity = 0.8 * (1 - (index / (filteredArray.length || 1)));
-                    const dotColor = point.isHoming 
-                                    ? `rgba(0, 255, 255, ${opacity})` // Ciano se homing
-                                    : `rgba(0, 255, 0, ${opacity})`; // Verde altrimenti
-                    return (
-                        <div
-                            key={`traj-${index}`}
-                            className="trajectory-dot"
-                            style={{
-                                position: 'absolute',
-                                width: `${TRAJECTORY_DOT_SIZE * 2}px`,
-                                height: `${TRAJECTORY_DOT_SIZE * 2}px`,
-                                backgroundColor: dotColor,
-                                left: `${point.x - TRAJECTORY_DOT_SIZE}px`,
-                                top: `${point.y - TRAJECTORY_DOT_SIZE}px`,
-                                boxShadow: point.isHoming ? `0 0 5px #0ff` : `0 0 5px #0f0`
-                            }}
-                        />
-                    );
-                })
-        )}
+            left: position.x - PLAYER_RADIUS,
+            top: position.y - PLAYER_RADIUS,
+            width: PLAYER_RADIUS * 2,
+            height: PLAYER_RADIUS * 2
+          }}></div>
+        </div>
       </div>
       
-      {/* Messaggi a piede pagina */}
+      {/* Messaggio in stile Matrix */}
       <div style={{
-        fontSize: '10px',
         color: '#0f0',
-        padding: '5px 0',
-        textAlign: 'center'
+        fontSize: '12px',
+        marginTop: '10px',
+        fontFamily: 'monospace',
+        textShadow: '0 0 5px #0f0',
+        zIndex: 2
       }}>
-        <span>[MATRIX SYS]: NEO :: FOLLOW THE WHITE RABBIT :: {matrixID}</span>
+        FOLLOW THE WHITE RABBIT
       </div>
     </div>
   )

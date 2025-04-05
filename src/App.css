@@ -28,20 +28,46 @@ body {
   bottom: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.15;
-  background: linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.3)), 
-              url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="4000"><text y="20" fill="%2300ff00">01010101010101010101110101010101010101010101110101010101010101011101010101010101</text><text y="40" fill="%2300ff00">11010100111010101110101010010101010111001010101010111010101010101010111101010101</text><text y="60" fill="%2300ff00">10101010101110101010101010101010101110101010101010101011101010101010101010101110</text><text y="80" fill="%2300ff00">10101001110101011101010100101010101110010101010101110101010101010101111010101010</text><text y="100" fill="%2300ff00">01010101010101010101110101010101010101010101110101010101010101011101010101010101</text><text y="120" fill="%2300ff00">11010100111010101110101010010101010111001010101010111010101010101010111101010101</text><text y="140" fill="%2300ff00">10101010101110101010101010101010101110101010101010101011101010101010101010101110</text><text y="160" fill="%2300ff00">01010101010101010101110101010101010101010101110101010101010101011101010101010101</text><text y="180" fill="%2300ff00">11010100111010101110101010010101010111001010101010111010101010101010111101010101</text><text y="200" fill="%2300ff00">10101010101110101010101010101010101110101010101010101011101010101010101010101110</text></svg>');
-  background-size: auto;
-  animation: rain 20s linear infinite;
+  opacity: 0.2;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: rgba(0,0,0,0.95);
 }
 
-@keyframes rain {
+.rain-column {
+  position: absolute;
+  top: -100px;
+  display: flex;
+  flex-direction: column;
+  color: #0f0;
+  font-size: 14px;
+  text-shadow: 0 0 2px #0f0;
+  animation-name: rain-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  width: 20px;
+  text-align: center;
+}
+
+@keyframes rain-fall {
   0% {
-    background-position: 0 0;
+    transform: translateY(-100%);
   }
   100% {
-    background-position: 0 1000px;
+    transform: translateY(100vh);
   }
+}
+
+.rain-char {
+  height: 20px;
+  width: 20px;
+  transition: color 0.5s ease;
+}
+
+.rain-char.highlight {
+  color: #fff;
+  text-shadow: 0 0 5px #0f0, 0 0 10px #0f0;
 }
 
 .game-container {
@@ -90,25 +116,39 @@ body {
   transform-origin: center;
 }
 
+/* Miglioramento effetto nemici */
 .enemy {
   border-radius: 50%;
-  box-shadow: 0 0 8px currentColor;
   z-index: 5;
+  background-color: rgba(255, 0, 0, 0.4);
 }
 
 .enemy-low {
-  color: #8b0000;
-  box-shadow: 0 0 5px currentColor;
+  background-color: rgba(139, 0, 0, 0.7);
+  box-shadow: 0 0 10px #8b0000, 0 0 15px #8b0000, 0 0 2px #fff;
+  border: 1px solid rgba(255, 0, 0, 0.6);
 }
 
 .enemy-medium {
-  color: #ff4500;
-  box-shadow: 0 0 8px currentColor;
+  background-color: rgba(255, 69, 0, 0.7);
+  box-shadow: 0 0 12px #ff4500, 0 0 18px #ff4500, 0 0 3px #fff;
+  border: 1px solid rgba(255, 69, 0, 0.8);
 }
 
 .enemy-high {
-  color: #ff0000;
-  box-shadow: 0 0 12px currentColor, 0 0 4px #fff;
+  background-color: rgba(255, 0, 0, 0.7);
+  box-shadow: 0 0 15px #ff0000, 0 0 22px #ff0000, 0 0 5px #fff;
+  border: 1px solid rgba(255, 0, 0, 1);
+  animation: pulse-enemy 1.2s infinite alternate;
+}
+
+@keyframes pulse-enemy {
+  0% {
+    box-shadow: 0 0 10px #ff0000, 0 0 15px #ff0000;
+  }
+  100% {
+    box-shadow: 0 0 15px #ff0000, 0 0 25px #ff0000, 0 0 5px #fff;
+  }
 }
 
 .bonus {
