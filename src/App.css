@@ -6,7 +6,7 @@
 body {
   margin: 0;
   background-color: #000;
-  overflow: hidden;
+  overflow: auto;
   font-family: 'Courier New', monospace;
   color: #0f0;
 }
@@ -145,6 +145,33 @@ body {
   z-index: 4;
   will-change: transform;
 }
+
+.boost-trail {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2688ff;
+  box-shadow: 0 0 8px 3px #2688ff, 0 0 20px 6px rgba(38, 136, 255, .55);
+  pointer-events: none;
+  z-index: 9;
+}
+
+.player-profile, .leaderboard {
+  width: min(800px, 96vw);
+  box-sizing: border-box;
+  font-size: 13px;
+}
+.player-profile { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; }
+.player-profile input { background: #071707; color: #caffca; border: 1px solid #0f0; padding: 7px; font: inherit; }
+.player-profile span { margin-left: auto; }
+.leaderboard { margin: 14px 0 24px; padding: 10px 16px; border: 1px solid #185718; text-align: left; }
+.leaderboard h2 { font-size: 16px; margin: 0 0 8px; }
+.leaderboard small { font-size: 11px; font-weight: normal; color: #9baa9b; }
+.leaderboard ol { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 30px; margin: 0; padding-left: 25px; }
+.leaderboard li { padding: 2px 0; }
+.leaderboard li strong { float: right; }
+.leaderboard p { margin: 0; color: #9baa9b; }
 
 .trajectory-dot {
   border-radius: 50%;
