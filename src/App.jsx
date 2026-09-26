@@ -23,7 +23,22 @@ const OBSTACLE_MAX_WIDTH = 30 // Larghezza massima degli ostacoli
 const OBSTACLE_MIN_HEIGHT = 6 // Altezza minima degli ostacoli
 const OBSTACLE_MAX_HEIGHT = 30 // Altezza massima degli ostacoli
 const OBSTACLE_AVOIDANCE_RADIUS = 40 // Raggio entro cui i nemici intelligenti iniziano a evitare
-const OBSTACLE_TYPES = ['rect', 'line-h', 'line-v', 'angle', 'u-shape']; // Tipi di ostacoli
+const OBSTACLE_TYPES = ['rect', 'line-h', 'line-v', 'angle', 'u-shape', 'cross', 'maze', 'steps'];
+
+const getObstacleSegments = (obstacle) => {
+  const { width: w, height: h } = obstacle;
+  if (obstacle.type === 'cross') return [[w / 2 - 2, 0, 4, h], [0, h / 2 - 2, w, 4]];
+  if (obstacle.type === 'maze') return [[0, 0, 4, h], [0, 0, w, 4], [w - 4, 0, 4, h * 0.65], [w * 0.35, h * 0.48, w * 0.65, 4], [w * 0.35, h * 0.48, 4, h * 0.52]];
+  if (obstacle.type === 'steps') return [[0, 0, w * 0.35, 4], [w * 0.35 - 4, 0, 4, h * 0.5], [w * 0.35 - 4, h * 0.5 - 4, w * 0.35, 4], [w * 0.7 - 8, h * 0.5 - 4, 4, h * 0.5], [w * 0.7 - 8, h - 4, w * 0.3 + 8, 4]];
+  return null;
+};
+
+const readScores = () => {
+  try {
+    const scores = JSON.parse(localStorage.getItem('moscerino-leaderboard-v1') || '[]');
+    return Array.isArray(scores) ? scores.filter(entry => typeof entry.name === 'string' && Number.isFinite(entry.score)).slice(0, 10) : [];
+  } catch { return []; }
+};
 
 // Boost Mode Constants (sostituisce Slow Motion)
 const BOOST_DURATION_FRAMES = 20; // Durata boost: circa 0.3 secondi a 60fps 
@@ -257,6 +272,10 @@ const Trajectory = React.memo(({ points }) => {
 
 // Componente ostacolo ottimizzato
 const Obstacle = React.memo(({ obstacle }) => {
+  const segments = getObstacleSegments(obstacle);
+  if (segments) return segments.map(([x, y, width, height], index) => (
+    <div key={index} className="obstacle" style={{ position: 'absolute', left: obstacle.x + x, top: obstacle.y + y, width, height }} />
+  ));
   // Renderizza l'ostacolo in base al suo tipo
   switch(obstacle.type) {
     case 'line-h':
@@ -369,7 +388,33 @@ function App() {
   const [obstacles, setObstacles] = useState([])
   const [level, setLevel] = useState(1)
   // Stato per l'high score
-  const [highScore, setHighScore] = useState(0)
+  const [highScore, setHighScore] = useState(() => readScores()[0]?.score || 0)
+  const [leaderboard, setLeaderboard] = useState(readScores)
+  const [playerName, setPlayerName] = useState(() => localStorage.getItem('moscerino-player-name') || '')
+  const [trail, setTrail] = useState([])
+  const audioRef = useRef(null)
+
+  const playSound = (kind) => {
+    try {
+      const context = audioRef.current || new (window.AudioContext || window.webkitAudioContext)();
+      audioRef.current = context;
+      if (context.state === 'suspended') context.resume();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const now = context.currentTime;
+      const tones = { boost: [220, 880, 0.24, 'sawtooth'], bonus: [520, 980, 0.13, 'sine'], hit: [240, 65, 0.32, 'triangle'] };
+      const [start, end, duration, shape] = tones[kind];
+      oscillator.type = shape;
+      oscillator.frequency.setValueAtTime(start, now);
+      oscillator.frequency.exponentialRampToValueAtTime(end, now + duration);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(now);
+      oscillator.stop(now + duration);
+    } catch { /* Audio non disponibile nel browser */ }
+  }
   
   // Matrix decoration states
   const [matrixPattern, setMatrixPattern] = useState(MATRIX_PATTERNS[0]);
@@ -454,6 +499,12 @@ function App() {
           width2 = Math.floor(Math.random() * 60) + 30; // Larghezza totale della U
           height2 = 4; // Altezza della base della U
           break;
+        case 'cross':
+        case 'maze':
+        case 'steps':
+          width = Math.floor(Math.random() * 35) + 48;
+          height = Math.floor(Math.random() * 35) + 48;
+          break;
         case 'rect':
         default:
           width = Math.floor(Math.random() * (OBSTACLE_MAX_WIDTH - OBSTACLE_MIN_WIDTH)) + OBSTACLE_MIN_WIDTH;
@@ -523,6 +574,14 @@ function App() {
   }, [score, level]);
 
   const resetGame = () => {
+    playSound('hit');
+    const name = playerName.trim().slice(0, 18) || 'Anonimo';
+    if (score > 0) {
+      const nextScores = [...leaderboard, { name, score, date: Date.now() }]
+        .sort((a, b) => b.score - a.score || a.date - b.date).slice(0, 10);
+      setLeaderboard(nextScores);
+      try { localStorage.setItem('moscerino-leaderboard-v1', JSON.stringify(nextScores)); } catch { /* Spazio non disponibile */ }
+    }
     // Controlla se il punteggio attuale è maggiore dell'high score
     if (score > highScore) {
       setHighScore(score);
@@ -545,10 +604,16 @@ function App() {
     // Resetta livello e ostacoli
     setLevel(1)
     setObstacles([])
+    setTrail([])
   }
 
   // Controlla se un punto è dentro un ostacolo
   const isPointInObstacle = (point, obstacle) => {
+    const segments = getObstacleSegments(obstacle);
+    if (segments) return segments.some(([x, y, width, height]) =>
+      point.x >= obstacle.x + x - PLAYER_RADIUS && point.x <= obstacle.x + x + width + PLAYER_RADIUS &&
+      point.y >= obstacle.y + y - PLAYER_RADIUS && point.y <= obstacle.y + y + height + PLAYER_RADIUS
+    );
     switch(obstacle.type) {
       case 'line-h':
         return (
@@ -981,6 +1046,9 @@ function App() {
           setBoostDurationTimer(nextTimer);
         }
       }
+      setTrail(previous => isBoostActive
+        ? [...previous.slice(-13), { x: position.x, y: position.y, id: frameCountRef.current }]
+        : previous.length ? previous.slice(2) : previous);
       
       if (boostCooldownTimer > 0) {
         setBoostCooldownTimer(Math.max(0, boostCooldownTimer - 1));
@@ -1080,6 +1148,7 @@ function App() {
         const collisionDistance = PLAYER_RADIUS + bonusPosition.size / 2;
         const dist = distance(bonusPosition, position);
         if (dist < collisionDistance) {
+          playSound('bonus');
           setScore(prevScore => {
             const newScore = prevScore + 1;
             
@@ -1122,7 +1191,8 @@ function App() {
         const dist = distance(enemy, position);
         if (dist < PLAYER_RADIUS * 2) {
           resetGame();
-          break;
+          animationFrameRef.current = requestAnimationFrame(gameLoop);
+          return;
         }
       }
       
@@ -1130,7 +1200,8 @@ function App() {
       for (const obstacle of obstacles) {
         if (isPointInObstacle(position, obstacle)) {
           resetGame();
-          break;
+          animationFrameRef.current = requestAnimationFrame(gameLoop);
+          return;
         }
       }
     }
@@ -1164,10 +1235,11 @@ function App() {
     const handleKeyDown = (e) => {
       if (e.key === ' ' ) { // Barra spaziatrice
          e.preventDefault(); // Impedisce lo scroll della pagina
-         if (boostCooldownTimer <= 0) {
+         if (!e.repeat && boostCooldownTimer <= 0) {
              setIsBoostActive(true);
              setBoostDurationTimer(BOOST_DURATION_FRAMES);
              setBoostCooldownTimer(BOOST_COOLDOWN_FRAMES);
+             playSound('boost');
          }
       } else {
         switch(e.key) {
@@ -1225,7 +1297,7 @@ function App() {
   return (
     <div style={{ 
       width: '100%', 
-      height: '100vh',
+      minHeight: '100vh',
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center', 
@@ -1244,6 +1316,15 @@ function App() {
         letterSpacing: '2px'
       }}>
         THE CHOSEN ONE
+      </div>
+      <div className="player-profile">
+        <label htmlFor="player-name">NOME GIOCATORE</label>
+        <input id="player-name" maxLength={18} value={playerName} placeholder="Anonimo"
+          onChange={event => {
+            setPlayerName(event.target.value);
+            try { localStorage.setItem('moscerino-player-name', event.target.value); } catch { /* Spazio non disponibile */ }
+          }} />
+        <span>Frecce: muovi · Spazio: scatto</span>
       </div>
       
       {/* Container principale */}
@@ -1328,6 +1409,13 @@ function App() {
           {enemiesWithIds.map((enemy) => (
             <Enemy key={`enemy-${enemy.id}`} enemy={enemy} />
           ))}
+          {trail.map((point, index) => (
+            <div key={point.id} className="boost-trail" style={{
+              left: point.x - PLAYER_RADIUS, top: point.y - PLAYER_RADIUS,
+              opacity: (index + 1) / trail.length * 0.8,
+              transform: `scale(${0.4 + index / trail.length * 0.9})`
+            }} />
+          ))}
           
           {/* Giocatore - con effetto trail durante il boost */}
           <div className={`player ${isBoostActive ? 'player-boost' : ''}`} style={{
@@ -1340,6 +1428,12 @@ function App() {
           }}></div>
         </div>
       </div>
+      <section className="leaderboard" aria-label="Classifica locale">
+        <h2>CLASSIFICA <small>salvata su questo dispositivo</small></h2>
+        {leaderboard.length ? <ol>{leaderboard.map((entry, index) => (
+          <li key={`${entry.date}-${index}`}><span>{entry.name}</span><strong>{entry.score}</strong></li>
+        ))}</ol> : <p>Gioca e raccogli punti per entrare in classifica.</p>}
+      </section>
     </div>
   )
 }
