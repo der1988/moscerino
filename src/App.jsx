@@ -48,13 +48,8 @@ const PLAYER_BOOST_FACTOR = 1.8; // Accelera il giocatore al 180% della velocit�
 const BONUS_ATTRACTION_RADIUS = 50; // Raggio entro cui il bonus viene attratto al giocatore
 const BONUS_ATTRACTION_SPEED = 0.8; // Velocità di attrazione del bonus
 
-// Trajectory Constants
-const TRAJECTORY_LENGTH = 100;       // Lunghezza max della previsione in px
-const TRAJECTORY_MAX_STEPS = 60;     // Numero max di passi per evitare loop infiniti
-const TRAJECTORY_DASH_SKIP = 3;      // Renderizza un punto ogni N passi
+// Dimensione dei punti decorativi della traiettoria
 const TRAJECTORY_DOT_SIZE = 2.5;       // Raggio dei punti della traiettoria
-const TRAJECTORY_HOMING_RADIUS = 200; // Raggio entro cui la traiettoria si aggancia al bonus
-const TRAJECTORY_HOMING_ACCEL_FACTOR = 1.5; // Moltiplicatore accelerazione verso bonus
 
 // Definizione dei livelli di intelligenza
 const INTELLIGENCE_LEVELS = { low: 'low', medium: 'medium', high: 'high' };
@@ -151,62 +146,12 @@ const createEnemyAwayFromPlayer = (playerPosition) => {
   return enemy;
 };
 
-// Funzione per la collisione elastica tra due moscerini
-const resolveCollision = (enemy1, enemy2) => {
-  // Vettore della differenza di posizione
-  const dx = enemy2.x - enemy1.x;
-  const dy = enemy2.y - enemy1.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  
-  // Normalizzazione del vettore
-  const nx = dx / distance;
-  const ny = dy / distance;
-  
-  // Differenza della velocità lungo il vettore normale
-  const dvx = enemy2.vx - enemy1.vx;
-  const dvy = enemy2.vy - enemy1.vy;
-  const dotProduct = nx * dvx + ny * dvy;
-  
-  // Se i due oggetti si stanno allontanando, non applicare impulso
-  if (dotProduct > 0) return { enemy1, enemy2 };
-  
-  // Coefficiente di rimbalzo (1 = perfettamente elastico)
-  const restitution = 0.8;
-  
-  // Calcolo dell'impulso
-  const impulse = (-(1 + restitution) * dotProduct) / 2;
-  
-  // Applicazione dell'impulso ai vettori velocità
-  const enemy1NewVx = enemy1.vx - impulse * nx;
-  const enemy1NewVy = enemy1.vy - impulse * ny;
-  const enemy2NewVx = enemy2.vx + impulse * nx;
-  const enemy2NewVy = enemy2.vy + impulse * ny;
-  
-  return {
-    enemy1: { ...enemy1, vx: enemy1NewVx, vy: enemy1NewVy },
-    enemy2: { ...enemy2, vx: enemy2NewVx, vy: enemy2NewVy }
-  };
-};
-
-// Matrix random characters for decorative elements
-const getMatrixChar = () => {
-  const chars = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
-  return chars.charAt(Math.floor(Math.random() * chars.length));
-};
-
-// Random Matrix ID for decorative elements
-const generateMatrixID = () => {
-  return Array(8).fill().map(() => Math.floor(Math.random() * 10)).join('');
-};
-
-// Random Matrix ASCII patterns
-const MATRIX_PATTERNS = [
-  "=-=-=-=-=-=-=-=-=-=-=-=-=-=",
-  "[][][][][][][][][][][][][]",
-  "::::::::::::::::::::::::::::",
-  "▓▒░▒▓▒░▒▓▒░▒▓▒░▒▓▒░▒▓▒░▒▓▒░",
-  "┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐"
-];
+// Funzione per generare una nuova posizione e dimensione del bonus
+const generateNewBonus = () => ({
+  x: Math.random() * (GAME_WIDTH - 20) + 10, // Evita spawn troppo vicino ai bordi
+  y: Math.random() * (GAME_HEIGHT - 20) + 10,
+  size: BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)]
+})
 
 // Componente ottimizzato per i nemici (memo per evitare re-render inutili)
 const Enemy = React.memo(({ enemy }) => {
@@ -394,7 +339,7 @@ function App() {
   const [trail, setTrail] = useState([])
   const audioRef = useRef(null)
 
-  const playSound = (kind) => {
+  const playSound = useCallback((kind) => {
     try {
       const context = audioRef.current || new (window.AudioContext || window.webkitAudioContext)();
       audioRef.current = context;
@@ -414,12 +359,8 @@ function App() {
       oscillator.start(now);
       oscillator.stop(now + duration);
     } catch { /* Audio non disponibile nel browser */ }
-  }
+  }, [])
   
-  // Matrix decoration states
-  const [matrixPattern, setMatrixPattern] = useState(MATRIX_PATTERNS[0]);
-  const [matrixID, setMatrixID] = useState(generateMatrixID());
-
   // Riferimenti per lo stato che non provoca re-render
   const frameCountRef = useRef(0);
   const animationFrameRef = useRef();
@@ -458,15 +399,8 @@ function App() {
     boostCooldownTimer
   ]);
 
-  // Funzione per generare una nuova posizione e dimensione del bonus
-  const generateNewBonus = () => ({
-    x: Math.random() * (GAME_WIDTH - 20) + 10, // Evita spawn troppo vicino ai bordi
-    y: Math.random() * (GAME_HEIGHT - 20) + 10,
-    size: BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)]
-  })
-
   // Funzione per generare un nuovo ostacolo con forma casuale
-  const generateNewObstacle = () => {
+  const generateNewObstacle = useCallback(() => {
     let newObstacle;
     let isValid = false;
     
@@ -552,7 +486,7 @@ function App() {
     }
     
     return newObstacle;
-  };
+  }, [position, bonusPosition, obstacles]);
 
   // Effetto per generare il primo bonus al mount
   useEffect(() => {
@@ -571,9 +505,9 @@ function App() {
         setObstacles(prev => [...prev, generateNewObstacle()]);
       }
     }
-  }, [score, level]);
+  }, [score, level, generateNewObstacle]);
 
-  const resetGame = () => {
+  const resetGame = useCallback(() => {
     playSound('hit');
     const name = playerName.trim().slice(0, 18) || 'Anonimo';
     if (score > 0) {
@@ -586,10 +520,6 @@ function App() {
     if (score > highScore) {
       setHighScore(score);
     }
-    
-    // Matrix reset effect - cambia pattern e ID
-    setMatrixPattern(MATRIX_PATTERNS[Math.floor(Math.random() * MATRIX_PATTERNS.length)]);
-    setMatrixID(generateMatrixID());
     
     // Reset del gioco
     setPosition({ x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 })
@@ -605,7 +535,7 @@ function App() {
     setLevel(1)
     setObstacles([])
     setTrail([])
-  }
+  }, [playSound, playerName, score, leaderboard, highScore])
 
   // Controlla se un punto è dentro un ostacolo
   const isPointInObstacle = (point, obstacle) => {
@@ -683,66 +613,6 @@ function App() {
       y: (dy / dist) * strength
     };
   };
-
-  // Utilizzo useMemo per il calcolo della traiettoria per evitare ricalcoli inutili
-  const trajectoryPoints = useMemo(() => {
-    if (!isBoostActive || (Math.abs(velocity.x) <= 0.1 && Math.abs(velocity.y) <= 0.1 && !Object.values(keys).some(v => v))) {
-      return [];
-    }
-    
-    let currentX = position.x;
-    let currentY = position.y;
-    let currentVx = velocity.x;
-    let currentVy = velocity.y;
-    let totalDistance = 0;
-    const points = [];
-
-    for (let i = 0; i < TRAJECTORY_MAX_STEPS && totalDistance < TRAJECTORY_LENGTH; i++) {
-      let isHoming = false;
-      let sim_ax = 0;
-      let sim_ay = 0;
-      let sim_accel = 0.3;
-
-      if (bonusPosition && distance({ x: currentX, y: currentY }, bonusPosition) <= TRAJECTORY_HOMING_RADIUS) {
-          isHoming = true;
-          const dx_bonus = bonusPosition.x - currentX;
-          const dy_bonus = bonusPosition.y - currentY;
-          let len_bonus = Math.sqrt(dx_bonus * dx_bonus + dy_bonus * dy_bonus);
-          len_bonus = len_bonus === 0 ? 1 : len_bonus;
-          sim_ax = dx_bonus / len_bonus;
-          sim_ay = dy_bonus / len_bonus;
-          sim_accel *= TRAJECTORY_HOMING_ACCEL_FACTOR;
-      } else {
-          if (keys.up) sim_ay -= 1;
-          if (keys.down) sim_ay += 1;
-          if (keys.left) sim_ax -= 1;
-          if (keys.right) sim_ax += 1;
-          if (sim_ax !== 0 && sim_ay !== 0) {
-            const length = Math.sqrt(sim_ax * sim_ax + sim_ay * sim_ay);
-            sim_ax /= length;
-            sim_ay /= length;
-          }
-      }
-     
-      currentVx = (currentVx + sim_ax * sim_accel) * PLAYER_FRICTION; 
-      currentVy = (currentVy + sim_ay * sim_accel) * PLAYER_FRICTION;
-
-      if (Math.abs(currentVx) < 0.01 && Math.abs(currentVy) < 0.01 && sim_ax === 0 && sim_ay === 0) break;
-
-      currentX += currentVx; 
-      currentY += currentVy;
-
-      currentX = Math.max(PLAYER_RADIUS, Math.min(GAME_WIDTH - PLAYER_RADIUS, currentX));
-      currentY = Math.max(PLAYER_RADIUS, Math.min(GAME_HEIGHT - PLAYER_RADIUS, currentY));
-
-      points.push({ x: currentX, y: currentY, isHoming });
-      const stepDist = Math.sqrt(currentVx * currentVx + currentVy * currentVy);
-      totalDistance += stepDist;
-      if(stepDist < 0.01 && sim_ax === 0 && sim_ay === 0) break; 
-    }
-    
-    return points;
-  }, [isBoostActive, velocity, position, keys, bonusPosition]);
 
   // Funzione ottimizzata per aggiornare lo stato dei nemici
   const updateEnemies = useCallback((enemies, playerPos, playerVel, bonusPos, isBoostMode) => {
@@ -1210,7 +1080,7 @@ function App() {
     animationFrameRef.current = requestAnimationFrame(gameLoop);
   }, [
     updateEnemies,
-    generateNewBonus,
+    playSound,
     generateNewObstacle,
     resetGame,
     level,
@@ -1269,12 +1139,7 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [boostCooldownTimer]);
-
-  // Calcolo percentuale per la barra di cooldown
-  const cooldownPercent = useMemo(() => {
-    return Math.max(0, 1 - (boostCooldownTimer / BOOST_COOLDOWN_FRAMES)) * 100;
-  }, [boostCooldownTimer]);
+  }, [boostCooldownTimer, playSound]);
 
   // Ottimizziamo il rendering con un ID stabile per ogni nemico
   const enemiesWithIds = useMemo(() => {
