@@ -1,0 +1,148 @@
+body:has(.circuit) {
+  display: block;
+  width: auto;
+  background: #101815;
+}
+
+#root:has(.circuit) {
+  background: #101815;
+  text-align: left;
+}
+
+.circuit {
+  box-sizing: border-box;
+  color-scheme: dark;
+  color: #e6f4ec;
+  max-width: 1180px;
+  padding: clamp(14px, 3vw, 36px);
+  margin: auto;
+  font-family: system-ui, sans-serif;
+}
+
+.circuit-header,
+.circuit-footer,
+.circuit-footer form {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.circuit-header {
+  margin-bottom: 16px;
+}
+
+.circuit-brand {
+  margin: 0;
+  color: #89f5b6;
+  letter-spacing: .18em;
+  font: 700 12px ui-monospace, monospace;
+}
+
+.circuit h1 {
+  margin: 4px 0 0;
+  font-size: clamp(22px, 5vw, 34px);
+  line-height: 1.15;
+}
+
+.circuit button,
+.circuit input {
+  box-sizing: border-box;
+  border: 1px solid #426152;
+  background: #182720;
+  color: #e6f4ec;
+  border-radius: 5px;
+  padding: 7px 10px;
+  font: inherit;
+}
+
+.circuit button:hover {
+  border-color: #89f5b6;
+}
+
+.circuit-stage {
+  position: relative;
+  border: 1px solid #365343;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b1512;
+}
+
+.circuit-stage canvas {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 64vh, 720px);
+}
+
+.circuit-sector,
+.circuit-tier {
+  position: absolute;
+  top: 12px;
+  padding: 7px 10px;
+  border: 1px solid #365343;
+  border-radius: 5px;
+  background: #0b1512ed;
+  color: #dcf2e3;
+  pointer-events: none;
+}
+
+.circuit-sector {
+  left: 12px;
+  display: grid;
+}
+
+.circuit-sector span,
+.circuit-tier {
+  font: 12px/1.5 ui-monospace, monospace;
+}
+
+.circuit-sector span {
+  color: #a8c6b6;
+}
+
+.circuit-tier {
+  right: 12px;
+}
+
+.circuit-readouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.circuit-readouts div {
+  padding: 8px 12px;
+  border: 1px solid #365343;
+  border-radius: 5px;
+  background: #14211b;
+}
+
+.circuit-readouts dt,
+.circuit-footer {
+  color: #a8c6b6;
+  font-size: 13px;
+}
+
+.circuit-readouts dd {
+  margin: 2px 0 0;
+  font: 700 16px ui-monospace, monospace;
+}
+
+.circuit-footer p {
+  margin: 0;
+}
+
+.circuit-footer input {
+  width: 120px;
+}
+
+.circuit-back {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: #182720;
+  color: #e6f4ec;
+}
