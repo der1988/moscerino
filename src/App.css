@@ -1,7 +1,3 @@
-@font-face {
-  font-family: 'Matrix';
-  src: url('https://fonts.cdnfonts.com/css/matrix') format('woff2');
-}
 
 body {
   margin: 0;
@@ -31,6 +27,8 @@ body {
 }
 
 .ui-bar {
+  height: 40px;
+  padding: 0 10px;
   background: rgba(0, 20, 0, 0.8);
   border: 1px solid #0f0;
   border-radius: 5px 5px 0 0;
@@ -215,5 +213,83 @@ body {
   }
   100% {
     transform: translate(0);
+  }
+}
+
+.arena-world {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.sector-floor {
+  position: absolute;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #1c66302b 1px, transparent 1px),
+    linear-gradient(#1c66302b 1px, transparent 1px),
+    color-mix(in srgb, var(--circuit-color) 7%, #000);
+  background-size: 40px 40px, 40px 40px, auto;
+  box-shadow: inset 0 0 60px #0007;
+}
+
+.arena-location {
+  position: absolute;
+  z-index: 12;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #d0f7d4;
+  font-size: 12px;
+  text-shadow: 0 1px 3px #000;
+}
+
+.arena-location span {
+  padding: 4px 7px;
+  background: #001008ee;
+  border: 1px solid var(--circuit-color);
+  border-radius: 3px;
+}
+
+.arena-world .obstacle {
+  background: var(--circuit-color);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--circuit-color) 45%, transparent);
+}
+
+.arena-world .obstacle-wall {
+  opacity: .62;
+}
+
+.arena-world .obstacle-inactive {
+  opacity: .23;
+  outline: 1px dashed var(--circuit-color);
+}
+
+.arena-world .bonus-rich {
+  background: #ffdb57;
+  outline: 2px solid #bc9228;
+}
+
+.game-container {
+  box-sizing: border-box;
+  width: min(802px, 96vw);
+}
+
+.game-area {
+  box-sizing: border-box;
+  height: min(600px, 72vh);
+}
+
+@media (max-width: 550px) {
+  .game-container .ui-bar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 40px;
+    gap: 5px;
+    padding-block: 5px;
   }
 }
