@@ -3,7 +3,6 @@ export const HEIGHT = 600
 export const RADIUS = 3
 export const ORIGIN = { x: WIDTH / 2, y: HEIGHT / 2 }
 
-const GATE_WIDTH = 142
 const WALL_DEPTH = 8
 const ROLES = ['aggressive', 'flanker', 'guard', 'sentinel']
 
@@ -59,46 +58,73 @@ export function hitsObstacle(point, barrier, radius = RADIUS) {
   return crossesBarrier(point, point, barrier, radius)
 }
 
+export function distanceFromOrigin(point) {
+  return Math.hypot(point.x - ORIGIN.x, point.y - ORIGIN.y)
+}
+
+function pressureAt(point) {
+  return Math.min(5, Math.floor(2 * Math.log2(1 + distanceFromOrigin(point) / Math.hypot(WIDTH, HEIGHT))))
+}
+
+function passage(seed, col, row, vertical) {
+  const center = gateCenter(seed, col, row, vertical)
+  const x = col * WIDTH + (vertical ? -WALL_DEPTH / 2 : 0)
+  const y = row * HEIGHT + (vertical ? 0 : -WALL_DEPTH / 2)
+  const id = `${vertical ? 'v' : 'h'}:${col},${row}`
+  const symbol = vertical ? '●' : row % 2 === 0 ? '◆' : '▲'
+  const free = vertical && col % 2 !== 0
+  const point = vertical ? { x: col * WIDTH, y: y + center } : { x: x + center, y: row * HEIGHT }
+  const width = 136 - 12 * pressureAt(point)
+  const from = center - width / 2
+  const to = center + width / 2
+  const orient = segments => vertical ? segments.map(([a, b, w, h]) => [b, a, h, w]) : segments
+  const wall = { id, x, y, segments: orient([[0, 0, from, WALL_DEPTH], [to, 0, (vertical ? HEIGHT : WIDTH) - to, WALL_DEPTH]]) }
+  const door = { id, symbol, ...point, vertical, width, barrier: { x, y, segments: orient([[from, 0, width, WALL_DEPTH]]) } }
+  return { wall, door: free ? null : door, point }
+}
+
+export function circuitActive(circuit, frame) {
+  return (frame + circuit.phase) % 180 >= 95
+}
+
 export function createSector(seed, col, row) {
   const key = sectorKey(col, row)
   const x = col * WIDTH
   const y = row * HEIGHT
-  const distance = Math.hypot(col, row)
-  const pressure = Math.min(5, Math.floor(Math.log2(1 + distance) * 2))
+  const center = { x: x + ORIGIN.x, y: y + ORIGIN.y }
+  const pressure = pressureAt(center)
   const variant = hash(seed, col, row)
-  const north = gateCenter(seed, col, row, false)
-  const west = gateCenter(seed, col, row, true)
-  const split = (center, size, thickness) => [
-    [0, 0, center - GATE_WIDTH / 2, thickness],
-    [center + GATE_WIDTH / 2, 0, size - center - GATE_WIDTH / 2, thickness]
-  ]
-  const obstacles = [
-    { id: key + ':north', x, y: y - WALL_DEPTH / 2, segments: split(north, WIDTH, WALL_DEPTH) },
-    { id: key + ':west', x: x - WALL_DEPTH / 2, y, segments: split(west, HEIGHT, WALL_DEPTH).map(([a, b, w, h]) => [b, a, h, w]) }
-  ]
-  const doors = []
-  const lights = []
-  const orbs = [{ x: x + 470, y: y + 335, bit: 1 }]
-  const bays = [[105, 65], [545, 65], [105, 437], [545, 437]]
-  bays.splice(variant % bays.length, 1)
-  bays.forEach(([left, top], index) => {
-    const bottom = top > HEIGHT / 2
-    const id = key + ':' + index
-    const doorY = top + (bottom ? 0 : 92)
-    const symbol = ['◆', '●', '▲'][index]
-    const lightBit = 1 << index
-    const orbBit = 1 << (index + 1)
-    obstacles.push({
-      id: id + ':bay', x: x + left, y: y + top,
-      segments: [[0, 0, 7, 100], [143, 0, 7, 100], [0, bottom ? 92 : 0, 150, 8],
-        [0, bottom ? 0 : 92, 47, 8], [103, bottom ? 0 : 92, 47, 8]]
-    })
-    doors.push({ id, x: x + left + 47, y: y + doorY, segments: [[0, 0, 56, 8]], symbol, bit: lightBit })
-    lights.push({ x: x + [347, 400, 453][index], y: y + 250, bit: lightBit, symbol })
-    orbs.push({ x: x + left + 75, y: y + top + 50, bit: orbBit })
+  const north = passage(seed, col, row, false)
+  const west = passage(seed, col, row, true)
+  const edges = [north, passage(seed, col + 1, row, true), passage(seed, col, row + 1, false), west]
+  const doors = edges.flatMap(edge => edge.door ? [edge.door] : [])
+  const traces = edges.flatMap(({ point }, index) => {
+    const bend = index % 2 === 0 ? { x: point.x, y: center.y } : { x: center.x, y: point.y }
+    return [[center, bend], [bend, point]].map(([a, b]) => ({
+      left: Math.min(a.x, b.x), top: Math.min(a.y, b.y),
+      width: Math.max(2, Math.abs(a.x - b.x)), height: Math.max(2, Math.abs(a.y - b.y))
+    }))
   })
-  const roles = [ROLES[variant % ROLES.length], ROLES[(variant + 1) % ROLES.length]]
-  return { key, col, row, x, y, pressure, roles, obstacles, doors, lights, orbs }
+  const lights = doors.map((door, index) => ({
+    id: door.id, symbol: door.symbol, x: center.x + (index - 1) * 58, y: center.y - 62
+  }))
+  const obstacles = [north.wall, west.wall]
+  const pockets = [[128, 105], [565, 115], [144, 437], [560, 418]]
+  const circuits = []
+  for (let i = 0; i < Math.min(4, pressure); i++) {
+    const [left, top] = pockets[(i + variant % pockets.length) % pockets.length]
+    const id = `${key}:${i}`
+    const block = { id, x: x + left, y: y + top, segments: [[0, 0, 82 + pressure * 5, 12], [0, 0, 12, 55]] }
+    if (pressure >= 2 && i % 2 === 0) circuits.push({ ...block, phase: (variant + i * 43) % 180 })
+    else obstacles.push(block)
+  }
+  // Every fourth pattern has no energy at all. Pickups stay on clear travel lanes.
+  const supplies = col === 0 && row === 0 ? [[470, 344], [175, 300]]
+    : variant % 4 === 0 ? [] : [[variant % 2 ? 250 : 550, 300], ...(variant % 3 === 0 ? [[400, 430]] : [])]
+  const orbs = supplies.map(([left, top], index) => ({ x: x + left, y: y + top, bit: 1 << index }))
+  const roles = Array.from({ length: Math.min(4, pressure + 1) }, (_, index) =>
+    ROLES[(variant + index) % ROLES.length])
+  return { key, col, row, x, y, pressure, roles, traces, obstacles, circuits, doors, lights, orbs }
 }
 
 export function loadNearby(sectors, seed, col, row) {

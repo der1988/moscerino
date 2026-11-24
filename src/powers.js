@@ -18,3 +18,11 @@ export function moveSoul(soul, stick) {
   const scale = Math.max(1, Math.hypot(x, y) / 220)
   return { x: x / scale, y: y / scale }
 }
+
+// Separate engage and release thresholds keep small stick jitter from creating another gesture.
+export function soulStick(x, y, engaged) {
+  const length = Math.hypot(x, y)
+  if (length <= (engaged ? 0.14 : 0.23)) return null
+  const strength = Math.min(1, (length - 0.14) / 0.86)
+  return { x: x / length * strength, y: y / length * strength }
+}
