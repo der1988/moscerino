@@ -15,8 +15,6 @@ body {
   position: relative;
 }
 
-/* Rimuovo effetto pioggia di codice Matrix e tutte le classi correlate */
-
 .game-container {
   position: relative;
   z-index: 1;
@@ -42,20 +40,6 @@ body {
   border: 1px solid #0f0;
   overflow: hidden;
   box-shadow: 0 0 5px rgba(0, 255, 0, 0.4) inset;
-}
-
-.grid-background {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: 
-    linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px; /* Griglia più grande per meno linee e meno carico */
-  z-index: 1;
-  pointer-events: none;
 }
 
 .player {
@@ -120,28 +104,12 @@ body {
 }
 
 .bonus {
-  border-radius: 50%;
-  background: linear-gradient(to right, #7fff00, #00ff00);
-  box-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
-  animation: pulse 3s infinite alternate; /* Rallentata l'animazione */
+  background: #f2fff7;
+  box-shadow: 0 0 9px #e6ffee;
+  border-radius: 2px;
+  transform: rotate(45deg);
   z-index: 5;
   will-change: transform, left, top;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 5px rgba(0, 255, 0, 0.7);
-  }
-  100% {
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.9);
-  }
-}
-
-.obstacle {
-  background: rgba(255, 0, 0, 0.7);
-  box-shadow: 0 0 8px rgba(255, 0, 0, 0.7);
-  z-index: 4;
-  will-change: transform;
 }
 
 .boost-trail {
@@ -171,49 +139,10 @@ body {
 .leaderboard li strong { float: right; }
 .leaderboard p { margin: 0; color: #9baa9b; }
 
-.trajectory-dot {
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 3;
-  will-change: transform, opacity;
-}
-
-.cooldown-bar {
-  border: 1px solid #0f0;
-  background-color: rgba(0, 20, 0, 0.5);
-}
-
-.cooldown-progress {
-  transition: width 0.1s linear; /* Transizione più veloce */
-}
-
-.cooldown-label {
-  text-shadow: 0 0 3px #0f0;
-  font-weight: bold;
-  letter-spacing: 1px;
-  color: #fff;
-}
-
 .info-text {
   color: #0f0;
   font-weight: bold;
   text-shadow: 0 0 3px #0f0;
-}
-
-/* Animazioni ottimizzate */
-@keyframes glitch {
-  0% {
-    transform: translate(0);
-  }
-  20% {
-    transform: translate(-2px, 2px);
-  }
-  80% {
-    transform: translate(2px, -2px);
-  }
-  100% {
-    transform: translate(0);
-  }
 }
 
 .arena-world {
@@ -228,7 +157,7 @@ body {
   background:
     linear-gradient(90deg, #1c66302b 1px, transparent 1px),
     linear-gradient(#1c66302b 1px, transparent 1px),
-    color-mix(in srgb, var(--circuit-color) 7%, #000);
+    #031009;
   background-size: 40px 40px, 40px 40px, auto;
   box-shadow: inset 0 0 60px #0007;
 }
@@ -251,22 +180,8 @@ body {
 .arena-location span {
   padding: 4px 7px;
   background: #001008ee;
-  border: 1px solid var(--circuit-color);
+  border: 1px solid #277043;
   border-radius: 3px;
-}
-
-.arena-world .obstacle {
-  background: var(--circuit-color);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--circuit-color) 45%, transparent);
-}
-
-.arena-world .obstacle-wall {
-  opacity: .62;
-}
-
-.arena-world .obstacle-inactive {
-  opacity: .23;
-  outline: 1px dashed var(--circuit-color);
 }
 
 .arena-world .bonus-rich {
@@ -293,3 +208,152 @@ body {
     padding-block: 5px;
   }
 }
+
+.matrix-wall,
+.matrix-door,
+.matrix-light,
+.matrix-orb,
+.matrix-soul,
+.soul-link {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.matrix-wall {
+  z-index: 2;
+  background: #17402a;
+  box-shadow: inset 0 0 0 1px #2c7250;
+}
+
+.matrix-door {
+  z-index: 4;
+  width: 56px;
+  height: 8px;
+  border: 1px solid #7efca0;
+  border-radius: 2px;
+  background: #2d8d48;
+  box-shadow: 0 0 8px #62f98f88;
+  color: #e1ffe9;
+}
+
+.matrix-door span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  background: #17432a;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.matrix-door.is-open {
+  border: 1px dashed #45825c;
+  background: transparent;
+  box-shadow: none;
+  color: #84bd97;
+}
+
+.matrix-door.is-open span {
+  background: #0b2013;
+}
+
+.matrix-light,
+.matrix-orb,
+.matrix-soul {
+  z-index: 7;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+.matrix-light {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid #64ff8f;
+  background: #9bffb4;
+  color: #093715;
+  box-shadow: 0 0 10px #62f98f;
+  font-size: 13px;
+}
+
+.matrix-orb {
+  width: 9px;
+  height: 9px;
+  background: #8aeaff;
+  box-shadow: 0 0 5px 2px #29b8ff, 0 0 14px 3px #166fff;
+}
+
+.matrix-soul {
+  z-index: 11;
+  width: 15px;
+  height: 15px;
+  border: 1px solid #a7f4ff;
+  background: #71dfff45;
+  box-shadow: 0 0 10px #68dfff;
+}
+
+.soul-link {
+  z-index: 8;
+  height: 0;
+  border-top: 1px dashed #72e3ff;
+  transform-origin: left center;
+}
+
+.matrix-soul.is-blocked {
+  border-color: #ffb46b;
+  background: #ffb46b26;
+  box-shadow: 0 0 8px #ffb46b;
+}
+
+.soul-link.is-blocked {
+  border-color: #ffb46b;
+}
+
+.matrix-energy {
+  display: grid;
+  width: clamp(100px, 24vw, 185px);
+  gap: 3px;
+  color: #bcecff;
+  font-size: 12px;
+  text-shadow: none;
+}
+
+.matrix-energy label {
+  display: flex;
+  justify-content: space-between;
+}
+
+.matrix-energy progress {
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border: 1px solid #297fa7;
+  border-radius: 4px;
+  background: #081d2c;
+  color: #4cd5ff;
+  accent-color: #4cd5ff;
+  box-shadow: 0 0 8px #39bfff74;
+}
+
+.matrix-energy progress::-webkit-progress-bar { background: #081d2c; }
+.matrix-energy progress::-webkit-progress-value { background: linear-gradient(90deg, #2579ff, #70eaff); }
+.matrix-energy progress::-moz-progress-bar { background: linear-gradient(90deg, #2579ff, #70eaff); }
+
+.game-area.time-stopped .arena-world * {
+  animation-play-state: paused;
+}
+
+.matrix-controls {
+  width: min(800px, 96vw);
+  margin: 9px 0 0;
+  color: #a8c5af;
+  font-size: 12px;
+}
+
+.matrix-controls b { color: #45825c; }

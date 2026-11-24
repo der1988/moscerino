@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
 import {
   WIDTH as GAME_WIDTH, HEIGHT as GAME_HEIGHT, RADIUS as PLAYER_RADIUS, ORIGIN,
-  bonusWaypoint, createBonus, hitsObstacle, loadNearby, obstacleActive, sectorAt, sectorKey, seedFromText
+  bonusWaypoint, createBonus, crossesBarrier, hitsObstacle, loadNearby, sectorAt, sectorKey, seedFromText
 } from './arena.js'
+import { DASH_COST, MAX_ENERGY, ORB_ENERGY, TRANSFER_COST, moveSoul, slowMotion } from './powers.js'
 
 const PREDICTION_FACTOR = 25 // Quanto "avanti" guardano i nemici
 const ENEMY_BASE_ACCELERATION = 0.2 // Accelerazione base nemici
@@ -27,9 +28,8 @@ const readScores = () => {
   } catch { return []; }
 };
 
-// Boost Mode Constants (sostituisce Slow Motion)
+// Matrix Mode
 const BOOST_DURATION_FRAMES = 20; // Durata boost: circa 0.3 secondi a 60fps
-const BOOST_COOLDOWN_FRAMES = 10 * 60; // 10 secondi a 60fps
 const ENEMY_SLOW_FACTOR = 0.75; // Rallenta i nemici al 75% della velocità
 const PLAYER_BOOST_FACTOR = 1.8; // Accelera il giocatore al 180% della velocità
 const BONUS_ATTRACTION_RADIUS = 50; // Raggio entro cui il bonus viene attratto al giocatore
@@ -70,7 +70,7 @@ function createEnemy(sector, player, enemies) {
       enemies.every(enemy => distance(enemy, point) > 45))
   if (!slots.length) return null
   const point = slots[Math.floor(Math.random() * slots.length)]
-  const roles = sector.pressure ? sector.zone.roles : ['aggressive', 'flanker', 'guard', 'sentinel']
+  const roles = sector.pressure ? sector.roles : ['aggressive', 'flanker', 'guard', 'sentinel']
   const speeds = Object.values(SPEED_MULTIPLIERS)
   return {
     ...point,
@@ -101,13 +101,15 @@ function newRun(seed) {
     position: ORIGIN, velocity: { x: 0, y: 0 }, sectors, sector,
     enemies: spawnEnemies(sector, ORIGIN, [], 1), visited: new Set([sector.key]),
     bonus: createBonus(sector, BONUS_SIZES[1], true),
-    score: 0, trail: [], boost: 0, cooldown: 0, frame: 0
+    score: 0, trail: [], boost: 0, frame: 0,
+    energy: MAX_ENERGY, worldStep: 0, speed: 1, exhausted: false, soul: null,
+    opened: new Map(), collected: new Map()
   }
 }
 
-function readStick(pad) {
-  const x = pad?.axes[0] ?? 0
-  const y = pad?.axes[1] ?? 0
+function readStick(pad, axis = 0) {
+  const x = pad?.axes[axis] ?? 0
+  const y = pad?.axes[axis + 1] ?? 0
   const length = Math.hypot(x, y)
   const strength = Math.min(1, Math.max(0, (length - 0.15) / 0.85))
   return strength ? { x: x * strength / length, y: y * strength / length } : { x: 0, y: 0 }
@@ -138,23 +140,77 @@ const Enemy = React.memo(({ enemy }) => {
   );
 });
 
-const Obstacle = React.memo(function Obstacle({ obstacle, active }) {
+function solidBarriers(run) {
+  return [...run.sectors.values()].flatMap(room => [
+    ...room.obstacles,
+    ...room.doors.filter(door => !((run.opened.get(room.key) ?? 0) & door.bit))
+  ])
+}
+
+const Obstacle = React.memo(function Obstacle({ obstacle }) {
   return obstacle.segments.map(([x, y, width, height], index) => (
-    <div
-      key={index}
-      className={`obstacle obstacle-${obstacle.type}${active ? '' : ' obstacle-inactive'}`}
-      style={{ position: 'absolute', left: obstacle.x + x, top: obstacle.y + y, width, height, '--circuit-color': obstacle.color }}
-    />
+    <div key={index} className="matrix-wall"
+      style={{ left: obstacle.x + x, top: obstacle.y + y, width, height }} />
   ))
 })
 
-const SectorFloor = React.memo(function SectorFloor({ sector }) {
+const Room = React.memo(function Room({ room, opened, collected }) {
   return (
-    <div className="sector-floor" style={{
-      left: sector.x, top: sector.y, width: GAME_WIDTH, height: GAME_HEIGHT, '--circuit-color': sector.zone.color
-    }} />
+    <div className="matrix-room" data-room={room.key}>
+      <div className="sector-floor" style={{ left: room.x, top: room.y, width: GAME_WIDTH, height: GAME_HEIGHT }} />
+      {room.obstacles.map(obstacle => <Obstacle key={obstacle.id} obstacle={obstacle} />)}
+      {room.doors.map(door => (
+        <div key={door.bit} className={`matrix-door${opened & door.bit ? ' is-open' : ''}`}
+          data-symbol={door.symbol} style={{ left: door.x, top: door.y }}>
+          <span>{door.symbol}</span>
+        </div>
+      ))}
+      {room.lights.filter(light => !(opened & light.bit)).map(light => (
+        <div key={light.bit} className="matrix-light" data-symbol={light.symbol}
+          style={{ left: light.x, top: light.y }} aria-label={`Luce ${light.symbol}`}>{light.symbol}</div>
+      ))}
+      {room.orbs.filter(orb => !(collected & orb.bit)).map(orb => (
+        <div key={orb.bit} className="matrix-orb" style={{ left: orb.x, top: orb.y }} aria-label="Energia" />
+      ))}
+    </div>
   )
 })
+
+function collectInRoom(run, playSound) {
+  const { sector, position } = run
+  const opened = sector.lights.find(light => !(run.opened.get(sector.key) & light.bit) && distance(position, light) < 12)
+  const orb = sector.orbs.find(item => !(run.collected.get(sector.key) & item.bit) && distance(position, item) < 12)
+  if (opened) {
+    run.opened = new Map(run.opened).set(sector.key, (run.opened.get(sector.key) ?? 0) | opened.bit)
+    playSound('door')
+  }
+  if (orb && run.energy < MAX_ENERGY) {
+    run.collected = new Map(run.collected).set(sector.key, (run.collected.get(sector.key) ?? 0) | orb.bit)
+    run.energy = Math.min(MAX_ENERGY, run.energy + ORB_ENERGY)
+    playSound('bonus')
+  }
+}
+
+function enterRoom(run, seed) {
+  const { col, row } = sectorAt(run.position)
+  const key = sectorKey(col, row)
+  if (key === run.sector.key) return
+  const sectors = new Map(run.sectors)
+  loadNearby(sectors, seed, col, row)
+  run.sectors = sectors
+  run.sector = sectors.get(key)
+  run.enemies = run.enemies.filter(enemy => sectors.has(enemy.home))
+  const visited = new Set([...run.visited].filter(id => sectors.has(id)))
+  if (!visited.has(key)) {
+    visited.add(key)
+    run.enemies = spawnEnemies(run.sector, run.position, run.enemies, run.sector.pressure + 1)
+  }
+  run.visited = visited
+}
+
+function soulTarget(position, soul) {
+  return { x: position.x + soul.x, y: position.y + soul.y }
+}
 
 // Calcola vettore di evitamento per un ostacolo
 const calculateAvoidanceVector = (entity, obstacle) => {
@@ -436,8 +492,6 @@ function updateEnemies(enemies, playerPos, playerVel, bonusPos, isBoostMode, obs
   });
 }
 
-// Game loop ottimizzato basato su requestAnimationFrame con frame throttling
-
 function App() {
   const [seed] = useState(() => seedFromText(new URLSearchParams(location.search).get('seme') || 'moscerino'))
   const [game, setGame] = useState(() => newRun(seed))
@@ -455,7 +509,7 @@ function App() {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       const now = context.currentTime;
-      const tones = { boost: [220, 880, 0.24, 'sawtooth'], bonus: [520, 980, 0.13, 'sine'], hit: [240, 65, 0.32, 'triangle'] };
+      const tones = { boost: [220, 880, 0.24, 'sawtooth'], bonus: [520, 980, 0.13, 'sine'], hit: [240, 65, 0.32, 'triangle'], door: [320, 660, 0.18, 'sine'], transfer: [880, 260, 0.2, 'sine'] };
       const [start, end, duration, shape] = tones[kind];
       oscillator.type = shape;
       oscillator.frequency.setValueAtTime(start, now);
@@ -472,6 +526,7 @@ function App() {
   const runRef = useRef(game)
   const keysRef = useRef(new Set())
   const boostRequested = useRef(false)
+  const transferRequested = useRef(false)
 
   const saveScore = useCallback(score => {
     if (score <= 0) return
@@ -485,21 +540,25 @@ function App() {
 
   useEffect(() => {
     const keys = keysRef.current
-    const arrows = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
+    const movementKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']
     const keyDown = event => {
       if (event.target.closest?.('input, button, [contenteditable]')) return
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault()
         if (!event.repeat) boostRequested.current = true
-      } else if (arrows.includes(event.key)) {
+      } else if (event.code === 'KeyE') {
         event.preventDefault()
-        keys.add(event.key)
+        if (!event.repeat) transferRequested.current = true
+      } else if (movementKeys.includes(event.code || event.key)) {
+        event.preventDefault()
+        keys.add(event.code || event.key)
       }
     }
-    const keyUp = event => keys.delete(event.key)
+    const keyUp = event => keys.delete(event.code || event.key)
     const clear = () => {
       keys.clear()
       boostRequested.current = false
+      transferRequested.current = false
     }
     window.addEventListener('keydown', keyDown)
     window.addEventListener('keyup', keyUp)
@@ -516,84 +575,108 @@ function App() {
     let animationFrame
     let previous = null
     let elapsed = 0
+    let crossHeld = false
     let r1Held = false
 
-    function tick(pad, requestBoost) {
-      const run = runRef.current
-      const frame = run.frame + 1
+    function tick(pad, requestBoost, requestTransfer) {
+      const run = { ...runRef.current }
       const keys = keysRef.current
       const stick = readStick(pad)
+      const right = readStick(pad, 2)
       const ax = Number(keys.has('ArrowRight')) - Number(keys.has('ArrowLeft')) + stick.x
       const ay = Number(keys.has('ArrowDown')) - Number(keys.has('ArrowUp')) + stick.y
       const inputLength = Math.max(1, Math.hypot(ax, ay))
-      let boost = Math.max(0, run.boost - 1)
-      let cooldown = Math.max(0, run.cooldown - 1)
-      if (requestBoost && run.cooldown === 0) {
-        boost = BOOST_DURATION_FRAMES
-        cooldown = BOOST_COOLDOWN_FRAMES
+      const pressure = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 1
+        : Math.min(1, Math.max(0, pad?.buttons[7]?.value ?? 0))
+      const slow = slowMotion(run.energy, pressure, run.exhausted)
+      Object.assign(run, slow)
+      run.worldStep += run.speed
+
+      if (requestBoost && run.energy >= DASH_COST && run.boost === 0) {
+        run.energy -= DASH_COST
+        run.boost = BOOST_DURATION_FRAMES + 1
         playSound('boost')
       }
 
-      const vx = (run.velocity.x + ax / inputLength * 0.3) * PLAYER_FRICTION
-      const vy = (run.velocity.y + ay / inputLength * 0.3) * PLAYER_FRICTION
-      const velocity = { x: Math.abs(vx) < 0.01 ? 0 : vx, y: Math.abs(vy) < 0.01 ? 0 : vy }
-      const scale = boost ? PLAYER_BOOST_FACTOR : 1
-      const position = { x: run.position.x + velocity.x * scale, y: run.position.y + velocity.y * scale }
-      const { col, row } = sectorAt(position)
-      const key = sectorKey(col, row)
-      const sectorChanged = key !== run.sector.key
-      const sectors = sectorChanged ? new Map(run.sectors) : run.sectors
-      if (sectorChanged) loadNearby(sectors, seed, col, row)
-      const sector = sectors.get(key)
-      const obstacles = [...sectors.values()].flatMap(item => item.obstacles)
-        .filter(piece => obstacleActive(piece, frame))
-      // A wall is only eight pixels thick. Check between frames during a boost.
-      const midpoint = { x: (position.x + run.position.x) / 2, y: (position.y + run.position.y) / 2 }
+      run.soul = moveSoul(run.soul, {
+        x: right.x + Number(keys.has('KeyD')) - Number(keys.has('KeyA')),
+        y: right.y + Number(keys.has('KeyS')) - Number(keys.has('KeyW'))
+      })
+      let obstacles = solidBarriers(run)
+      if (requestTransfer && run.soul && run.energy >= TRANSFER_COST) {
+        const target = soulTarget(run.position, run.soul)
+        if (distance(run.position, target) > PLAYER_RADIUS &&
+            !obstacles.some(piece => crossesBarrier(run.position, target, piece))) {
+          run.energy -= TRANSFER_COST
+          run.position = target
+          run.soul = null
+          run.trail = []
+          enterRoom(run, seed)
+          collectInRoom(run, playSound)
+          obstacles = solidBarriers(run)
+          playSound('transfer')
+        }
+      }
 
-      const activeEnemies = run.enemies.filter(enemy => sectors.has(enemy.home))
-      const updated = updateEnemies(activeEnemies, position, velocity, run.bonus, Boolean(boost), obstacles, sectors)
+      // Input and energy use the fixed real-time clock. Movement and enemies use world time.
+      if (run.worldStep < 1 - 1e-9) return run
+      run.worldStep = Math.max(0, run.worldStep - 1)
+      run.frame += 1
+      run.boost = Math.max(0, run.boost - 1)
+      const previousPosition = run.position
+      const scale = run.boost ? PLAYER_BOOST_FACTOR : 1
+      const velocity = {
+        x: (run.velocity.x + ax / inputLength * 0.3) * PLAYER_FRICTION,
+        y: (run.velocity.y + ay / inputLength * 0.3) * PLAYER_FRICTION
+      }
+      const position = { ...run.position }
+      for (const axis of ['x', 'y']) {
+        if (Math.abs(velocity[axis]) < 0.01) velocity[axis] = 0
+        const next = { ...position, [axis]: position[axis] + velocity[axis] * scale }
+        if (obstacles.some(piece => crossesBarrier(position, next, piece))) velocity[axis] = 0
+        else position[axis] = next[axis]
+      }
+
+      run.velocity = velocity
+      run.position = position
+      enterRoom(run, seed)
+      collectInRoom(run, playSound)
+      obstacles = solidBarriers(run)
+      const activeEnemies = run.enemies
+      const updated = updateEnemies(activeEnemies, position, velocity, run.bonus, Boolean(run.boost), obstacles, run.sectors)
       const nextEnemies = new Map(updated.map(enemy => [enemy.id, enemy]))
-      if (activeEnemies.some(enemy => enemyContact(run.position, position, enemy, nextEnemies.get(enemy.id))) ||
-          obstacles.some(piece => hitsObstacle(position, piece) || hitsObstacle(midpoint, piece))) {
+      if (activeEnemies.some(enemy => enemyContact(previousPosition, position, enemy, nextEnemies.get(enemy.id)))) {
         playSound('hit')
         saveScore(run.score)
         return newRun(seed)
       }
+      run.enemies = updated
 
-      const visited = sectorChanged ? new Set([...run.visited].filter(id => sectors.has(id))) : run.visited
-      let enemies = updated
-      if (!visited.has(key)) {
-        visited.add(key)
-        enemies = spawnEnemies(sector, position, enemies, sector.pressure + 1)
-      }
-
-      let bonus = run.bonus
-      let score = run.score
+      const bonus = run.bonus
       const bonusDistance = distance(position, bonus)
       if (bonusDistance < PLAYER_RADIUS + bonus.size / 2) {
         playSound('bonus')
-        score += bonus.points
-        cooldown = 0
-        const level = Math.floor(score / 5) + 1
-        const localCount = enemies.filter(enemy => enemy.home === key).length
-        enemies = spawnEnemies(sector, position, enemies, Math.min(level, Math.max(0, 3 + sector.pressure - localCount)))
+        run.score += bonus.points
+        const level = Math.floor(run.score / 5) + 1
+        const localCount = updated.filter(enemy => enemy.home === run.sector.key).length
+        run.enemies = spawnEnemies(run.sector, position, updated,
+          Math.min(level, Math.max(0, 3 + run.sector.pressure - localCount)))
         const [dx, dy] = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)]
-        const next = sectors.get(sectorKey(col + dx, row + dy))
-        bonus = createBonus(next, BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)])
+        const next = run.sectors.get(sectorKey(run.sector.col + dx, run.sector.row + dy))
+        run.bonus = createBonus(next, BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)])
       } else if (bonusDistance < BONUS_ATTRACTION_RADIUS) {
         const speed = bonusDistance < AUTO_ATTRACTION_RADIUS ? AUTO_ATTRACTION_SPEED
-          : BONUS_ATTRACTION_SPEED * (1 - bonusDistance / BONUS_ATTRACTION_RADIUS) * (boost ? 1.5 : 1)
+          : BONUS_ATTRACTION_SPEED * (1 - bonusDistance / BONUS_ATTRACTION_RADIUS) * (run.boost ? 1.5 : 1)
         const next = {
           ...bonus,
           x: bonus.x + (position.x - bonus.x) / bonusDistance * speed,
           y: bonus.y + (position.y - bonus.y) / bonusDistance * speed
         }
-        // Keep attraction on the bonus side of a wall.
-        if (!obstacles.some(piece => hitsObstacle(next, piece, bonus.size / 2))) bonus = next
+        if (!obstacles.some(piece => crossesBarrier(bonus, next, piece, bonus.size / 2))) run.bonus = next
       }
 
-      const trail = boost ? [...run.trail.slice(-13), { ...run.position, id: frame }] : run.trail.slice(2)
-      return { position, velocity, sectors, sector, enemies, visited, bonus, score, trail, boost, cooldown, frame }
+      run.trail = run.boost ? [...run.trail.slice(-13), { ...previousPosition, id: run.frame }] : run.trail.slice(2)
+      return run
     }
 
     function gameLoop(timestamp) {
@@ -601,13 +684,18 @@ function App() {
       previous = timestamp
       if (elapsed >= FRAME_TIME) {
         const pad = Array.from(navigator.getGamepads?.() ?? []).find(gamepad => gamepad?.connected)
+        const cross = Boolean(pad?.buttons[0]?.pressed)
         const r1 = Boolean(pad?.buttons[5]?.pressed)
-        let request = boostRequested.current || (r1 && !r1Held)
+        let dash = boostRequested.current || (cross && !crossHeld)
+        let transfer = transferRequested.current || (r1 && !r1Held)
         boostRequested.current = false
+        transferRequested.current = false
+        crossHeld = cross
         r1Held = r1
         while (elapsed >= FRAME_TIME) {
-          runRef.current = tick(pad, request)
-          request = false
+          runRef.current = tick(pad, dash, transfer)
+          dash = false
+          transfer = false
           elapsed -= FRAME_TIME
         }
         setGame(runRef.current)
@@ -618,13 +706,13 @@ function App() {
     return () => cancelAnimationFrame(animationFrame)
   }, [playSound, saveScore, seed])
 
-  const { position, enemies, sectors, sector, bonus: bonusPosition, score, trail, frame } = game
-  const boostDurationTimer = game.boost
-  const boostCooldownTimer = game.cooldown
-  const isBoostActive = boostDurationTimer > 0
+  const { position, enemies, sectors, sector, bonus: bonusPosition, score, trail, energy, speed, soul } = game
+  const isBoostActive = game.boost > 0
+  const target = soul && soulTarget(position, soul)
+  const blocked = target && (energy < TRANSFER_COST || distance(position, target) <= PLAYER_RADIUS ||
+    solidBarriers(game).some(piece => crossesBarrier(position, target, piece)))
   const level = Math.floor(score / 5) + 1
   const highScore = leaderboard[0]?.score || 0
-  const matrixModeColor = isBoostActive || !boostCooldownTimer ? '#0ff' : '#0f0'
   const waypoint = bonusWaypoint(seed, position, bonusPosition)
   const bonusAngle = Math.atan2(waypoint.y - position.y, waypoint.x - position.x)
   const bonusDistance = Math.round(distance(position, bonusPosition))
@@ -661,7 +749,7 @@ function App() {
             setPlayerName(event.target.value);
             try { localStorage.setItem('moscerino-player-name', event.target.value); } catch { /* Spazio non disponibile */ }
           }} />
-        <span>Frecce / analogico sinistro · Spazio / R1</span>
+        <span>Movimento · Analogico sinistro / Frecce</span>
       </div>
 
       {/* Container principale */}
@@ -688,49 +776,34 @@ function App() {
             SCORE: {score} | HIGH: {highScore}
           </div>
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            minWidth: '250px',
-            justifyContent: 'flex-end'
-          }}>
-            <span className="cooldown-label" style={{
-              fontSize: '12px',
-              marginRight: '5px'
-            }}>
-              MATRIX MODE:
-            </span>
-            <div className="cooldown-bar" style={{ width: '120px', height: '15px' }}>
-              <div className="cooldown-progress" style={{
-                width: `${isBoostActive
-                  ? `${(1 - boostDurationTimer / BOOST_DURATION_FRAMES) * 100}%`
-                  : boostCooldownTimer === 0
-                    ? '100%'
-                    : `${(1 - boostCooldownTimer / BOOST_COOLDOWN_FRAMES) * 100}%`
-                }`,
-                height: '100%',
-                backgroundColor: matrixModeColor,
-                boxShadow: `0 0 5px ${matrixModeColor}`
-              }}></div>
-            </div>
+          <div className="matrix-energy">
+            <label htmlFor="matrix-energy">Energia <strong>{Math.ceil(energy)}%</strong></label>
+            <progress id="matrix-energy" max={MAX_ENERGY} value={energy} />
           </div>
         </div>
 
         {/* Game Area */}
-        <div className="game-area">
-          <div className="arena-location" style={{ '--circuit-color': sector.zone.color }}>
-            <span>{sector.zone.name} · Settore {sector.col}, {sector.row}</span>
-            <span>Bonus {direction} · {bonusDistance} m</span>
+        <div className={`game-area${speed === 0 ? " time-stopped" : ""}`}>
+          <div className="arena-location">
+            <span>Stanza {sector.col}, {sector.row}</span>
+            <span data-time-scale={speed}>{speed === 0 ? 'Tempo fermo' : `Tempo ${Math.round(speed * 100)}%`}</span>
+            <span>Bonus {direction} · {bonusDistance}</span>
           </div>
           <div className="arena-world" style={{ transform: `translate3d(calc(50% - ${position.x}px), calc(50% - ${position.y}px), 0)` }}>
-            {[...sectors.values()].map(item => (
-              <React.Fragment key={item.key}>
-                <SectorFloor sector={item} />
-                {item.obstacles.map(obstacle => (
-                  <Obstacle key={obstacle.id} obstacle={obstacle} active={obstacleActive(obstacle, frame)} />
-                ))}
-              </React.Fragment>
+            {[...sectors.values()].map(room => (
+              <Room key={room.key} room={room} opened={game.opened.get(room.key) ?? 0} collected={game.collected.get(room.key) ?? 0} />
             ))}
+            {target && (
+              <>
+                <div className={`soul-link${blocked ? ' is-blocked' : ''}`} style={{
+                  left: position.x, top: position.y, width: Math.hypot(soul.x, soul.y),
+                  transform: `rotate(${Math.atan2(soul.y, soul.x)}rad)`
+                }} />
+                <div className={`matrix-soul${blocked ? ' is-blocked' : ''}`}
+                  style={{ left: target.x, top: target.y }}
+                  aria-label={blocked ? 'Anima, trasferimento non disponibile' : 'Anima, trasferimento disponibile'} />
+              </>
+            )}
 
             {/* Bonus */}
             {bonusPosition && (
@@ -743,8 +816,6 @@ function App() {
                 willChange: 'transform'
               }}></div>
             )}
-
-            {/* Rimossa la traiettoria di previsione */}
 
             {/* Utilizzo del componente Enemy memorizzato per ogni nemico */}
             {enemies.map((enemy) => (
@@ -770,6 +841,7 @@ function App() {
           </div>
         </div>
       </div>
+      <p className="matrix-controls">× / Spazio · Matrix Mode <b>·</b> R2 / Maiusc · Tempo <b>·</b> Analogico destro / WASD · Anima <b>·</b> R1 / E · Trasferimento</p>
       <section className="leaderboard" aria-label="Classifica locale">
         <h2>CLASSIFICA <small>salvata su questo dispositivo</small></h2>
         {leaderboard.length ? <ol>{leaderboard.map((entry, index) => (
