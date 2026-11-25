@@ -2,25 +2,18 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
 import {
   WIDTH as GAME_WIDTH, HEIGHT as GAME_HEIGHT, RADIUS as PLAYER_RADIUS, ORIGIN,
-  bonusWaypoint, circuitActive, createBonus, crossesBarrier, distanceFromOrigin, hitsObstacle, loadNearby, sectorAt, sectorKey, seedFromText
+  bonusWaypoint, circuitActive, createBonus, createSector, crossesBarrier, distanceFromOrigin, loadNearby, sectorAt, sectorKey, seedFromText
 } from './arena.js'
 import { DASH_COST, MAX_ENERGY, ORB_ENERGY, TRANSFER_COST, moveSoul, slowMotion, soulStick } from './powers.js'
 import { soundtrackUrl, startSoundtrack } from './soundtrack.js'
 
-const PREDICTION_FACTOR = 25 // Quanto "avanti" guardano i nemici
-const ENEMY_BASE_ACCELERATION = 0.2 // Accelerazione base nemici
-const ENEMY_FRICTION = 0.96        // Frizione nemici
-const SPEED_MULTIPLIERS = { slow: 0.7, medium: 0.9, fast: 1.1 };
-const BONUS_GUARD_RADIUS = 200 // Raggio entro cui il guardiano INIZIA ad attaccare
-const DISENGAGE_RADIUS = 400  // Raggio OLTRE cui il guardiano SMETTE di attaccare
-const GUARD_PATROL_RADIUS = 100 // Distanza entro cui il guardiano rallenta vicino al bonus
-const SENTINEL_AGGRO_RADIUS = 400 // Raggio inseguimento sentinelle
+import { advanceEnemy } from './pursuit.js'
+
+const SPEED_MULTIPLIERS = [0.7, 0.9, 1.1]
 const BONUS_SIZES = [8, 10, 12] // Dimensioni possibili per i bonus (piccolo, medio, grande)
 const PLAYER_FRICTION = 0.93// Frizione del giocatore (ridotta inerzia)
 const AUTO_ATTRACTION_RADIUS = 2 // Raggio entro cui il bonus viene attratto automaticamente
 const AUTO_ATTRACTION_SPEED = 1 // Velocità di attrazione automatica
-
-const OBSTACLE_AVOIDANCE_RADIUS = 40
 
 const readScores = () => {
   try {
@@ -73,14 +66,13 @@ function createEnemy(sector, player, enemies) {
   if (!slots.length) return null
   const point = slots[Math.floor(Math.random() * slots.length)]
   const roles = sector.roles
-  const speeds = Object.values(SPEED_MULTIPLIERS)
   return {
     ...point,
     id: nextEnemyId++,
     home: sector.key,
     role: roles[Math.floor(Math.random() * roles.length)],
-    vx: 0, vy: 0, isEngaged: false, patrolTarget: null,
-    speedMultiplier: speeds[Math.min(2, Math.floor(Math.random() * (sector.pressure >= 2 ? 3 : 1)))],
+    vx: 0, vy: 0,
+    speedMultiplier: SPEED_MULTIPLIERS[Math.floor(Math.random() * (sector.pressure >= 2 ? 3 : 1))],
     intelligence: sector.pressure >= 4 ? INTELLIGENCE_LEVELS.high
       : sector.pressure >= 2 ? INTELLIGENCE_LEVELS.medium : INTELLIGENCE_LEVELS.low
   }
@@ -99,13 +91,14 @@ function newRun(seed) {
   const sectors = new Map()
   loadNearby(sectors, seed, 0, 0)
   const sector = sectors.get('0,0')
+  const enemies = spawnEnemies(sector, ORIGIN, [], 1)
   return {
     position: ORIGIN, velocity: { x: 0, y: 0 }, sectors, sector,
-    enemies: spawnEnemies(sector, ORIGIN, [], 1),
+    enemies, remaining: new Map([[sector.key, enemies.length]]),
     bonus: createBonus(sector, BONUS_SIZES[1], true),
     score: 0, trail: [], boost: 0, frame: 0,
     energy: MAX_ENERGY, worldStep: 0, speed: 1, exhausted: false, soul: null,
-    healthy: new Set(), encounters: new Map(), cleanseFrame: -100,
+    healthy: new Set(), inactiveEnemies: new Map(), cleanseFrame: -100,
     opened: new Set(), collected: new Map(), soulGesture: false, soulLanding: null
   }
 }
@@ -217,260 +210,30 @@ function enterRoom(run, seed) {
   const sectors = new Map(run.sectors)
   loadNearby(sectors, seed, col, row)
   run.sectors = sectors
-  run.encounters.set(run.sector.key, run.enemies)
   run.sector = sectors.get(key)
-  // The local pressure determines the next encounter, including on a return trip.
-  const sector = run.sector
-  run.enemies = run.encounters.get(key) ?? spawnEnemies(sector, run.position, [], sector.pressure + 1)
+
+  const inactive = new Map(run.inactiveEnemies)
+  run.enemies = run.enemies.filter(enemy => {
+    const room = sectorAt(enemy)
+    const roomKey = sectorKey(room.col, room.row)
+    if (sectors.has(roomKey)) return true
+    inactive.set(roomKey, [...(inactive.get(roomKey) ?? []), enemy])
+    return false
+  })
+  for (const roomKey of sectors.keys()) {
+    run.enemies.push(...(inactive.get(roomKey) ?? []))
+    inactive.delete(roomKey)
+  }
+  run.inactiveEnemies = inactive
+  if (!run.remaining.has(key)) {
+    const spawned = spawnEnemies(run.sector, run.position, [], run.sector.pressure + 1)
+    run.enemies.push(...spawned)
+    run.remaining = new Map(run.remaining).set(key, spawned.length)
+  }
 }
 
 function soulTarget(position, soul) {
   return { x: position.x + soul.x, y: position.y + soul.y }
-}
-
-// Calcola vettore di evitamento per un ostacolo
-const calculateAvoidanceVector = (entity, obstacle) => {
-  const dx = entity.x - obstacle.x;
-  const dy = entity.y - obstacle.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-
-  if (dist === 0) return { x: 1, y: 0 }; // Evita divisione per zero
-
-  // Normalizza e scala in base alla distanza
-  const strength = Math.min(1.0, OBSTACLE_AVOIDANCE_RADIUS / dist);
-  return {
-    x: (dx / dist) * strength,
-    y: (dy / dist) * strength
-  };
-};
-
-// Funzione ottimizzata per aggiornare lo stato dei nemici
-function updateEnemies(enemies, playerPos, playerVel, bonusPos, isBoostMode, obstacles, sectors) {
-  // Se il boost è attivo, i nemici rallentano leggermente
-  const timeScale = isBoostMode ? ENEMY_SLOW_FACTOR : 1.0;
-  const predictedX = playerPos.x + playerVel.x * PREDICTION_FACTOR;
-  const predictedY = playerPos.y + playerVel.y * PREDICTION_FACTOR;
-
-  return enemies.map((enemy, index) => {
-    let targetX = predictedX;
-    let targetY = predictedY;
-    let accelX = 0;
-    let accelY = 0;
-    let currentAccelerationFactor = ENEMY_BASE_ACCELERATION * enemy.speedMultiplier;
-    let nextIsEngaged = enemy.isEngaged;
-    let nextPatrolTarget = enemy.patrolTarget;
-
-    // Modifica del target in base al livello di intelligenza
-    if (enemy.intelligence === INTELLIGENCE_LEVELS.low) {
-      // Poco intelligenti: inseguimento diretto del giocatore
-      targetX = playerPos.x;
-      targetY = playerPos.y;
-
-    } else if (enemy.intelligence === INTELLIGENCE_LEVELS.medium) {
-      // Intelligenti: anticipano le mosse del giocatore
-      // Calcola una posizione anticipata basata sul movimento e velocità attuali
-      const anticipationFactor = 25 + Math.random() * 15; // Più randomico di PREDICTION_FACTOR
-      targetX = playerPos.x + playerVel.x * anticipationFactor;
-      targetY = playerPos.y + playerVel.y * anticipationFactor;
-
-      // Aggiungi un po' di randomicità per simulare l'intelligenza
-      targetX += (Math.random() - 0.5) * 40;
-      targetY += (Math.random() - 0.5) * 40;
-
-    } else if (enemy.intelligence === INTELLIGENCE_LEVELS.high) {
-      // Molto intelligenti: comportamento strategico
-      if (bonusPos) {
-        // Calcola la direzione dal giocatore al bonus
-        const towardsBonusX = bonusPos.x - playerPos.x;
-        const towardsBonusY = bonusPos.y - playerPos.y;
-        const distToBonus = Math.sqrt(towardsBonusX * towardsBonusX + towardsBonusY * towardsBonusY);
-
-        if (distToBonus > 0 && distToBonus < 200) {
-          // Il giocatore sembra dirigersi verso il bonus: intercetta
-          // Cerca di mettersi tra il giocatore e il bonus
-          const interceptX = playerPos.x + (towardsBonusX / distToBonus) * (distToBonus * 0.7);
-          const interceptY = playerPos.y + (towardsBonusY / distToBonus) * (distToBonus * 0.7);
-
-          targetX = interceptX;
-          targetY = interceptY;
-        } else {
-          // Anticipa le mosse del giocatore in modo avanzato
-          const advancedAnticipationFactor = 30 + Math.random() * 20;
-
-          // Prova a predire dove il giocatore andrà in base alla sua direzione attuale
-          // Aggiungi un po' di casualità per simulare "intuizione"
-          const directionChangeProbability = Math.random();
-
-          if (directionChangeProbability > 0.7) {
-            // Simula che il nemico "preveda" un cambio di direzione
-            targetX = playerPos.x - playerVel.x * advancedAnticipationFactor;
-            targetY = playerPos.y - playerVel.y * advancedAnticipationFactor;
-          } else {
-            // Usa la previsione normale ma migliorata
-            targetX = playerPos.x + playerVel.x * advancedAnticipationFactor;
-            targetY = playerPos.y + playerVel.y * advancedAnticipationFactor;
-          }
-
-          // Aggiungi randomicità per comportamento più imprevedibile
-          targetX += (Math.random() - 0.5) * 30;
-          targetY += (Math.random() - 0.5) * 30;
-        }
-      }
-    }
-
-    // Logica target basata sul ruolo (sovrascrive il target di intelligenza in casi specifici)
-    if (enemy.role === 'guard' && bonusPos) {
-      const playerDistToBonus = distance(playerPos, bonusPos)
-      const enemyDistToBonus = distance(enemy, bonusPos)
-
-      if (enemy.isEngaged) {
-        // Attualmente sta attaccando
-        targetX = predictedX
-        targetY = predictedY
-        // Controlla se deve disingaggiare
-        if (playerDistToBonus > DISENGAGE_RADIUS) {
-          nextIsEngaged = false; // Torna a difendere nel prossimo frame
-        }
-      } else {
-        // Attualmente sta difendendo
-        // Controlla se deve ingaggiare
-        if (playerDistToBonus <= BONUS_GUARD_RADIUS) {
-          nextIsEngaged = true; // Inizia ad attaccare nel prossimo frame
-          targetX = predictedX // Inizia subito a puntare al giocatore
-          targetY = predictedY
-        } else {
-          // Continua a difendere
-          targetX = bonusPos.x
-          targetY = bonusPos.y
-          if (enemyDistToBonus < GUARD_PATROL_RADIUS) {
-            currentAccelerationFactor *= 0.1; // Rallenta ancora di più il pattugliamento lento
-            const vecToBonusX = bonusPos.x - enemy.x;
-            const vecToBonusY = bonusPos.y - enemy.y;
-            const distToBonus = Math.sqrt(vecToBonusX * vecToBonusX + vecToBonusY * vecToBonusY) || 1;
-            accelX = -vecToBonusY / distToBonus;
-            accelY = vecToBonusX / distToBonus;
-            if (distToBonus < GUARD_PATROL_RADIUS * 0.8) {
-              accelX -= (vecToBonusX / distToBonus) * 0.5;
-              accelY -= (vecToBonusY / distToBonus) * 0.5;
-            }
-            const accelLen = Math.sqrt(accelX*accelX + accelY*accelY) || 1;
-            accelX /= accelLen;
-            accelY /= accelLen;
-          } // Altrimenti (fuori raggio patrol), accelera normalmente verso il bonus (calcolato dopo)
-        }
-      }
-    } else if (enemy.role === 'flanker') {
-      const flankOffset = 50
-      const vecToPlayerX = playerPos.x - enemy.x
-      const vecToPlayerY = playerPos.y - enemy.y
-      let len = Math.sqrt(vecToPlayerX*vecToPlayerX + vecToPlayerY*vecToPlayerY)
-      len = len === 0 ? 1 : len
-      const perpX = -vecToPlayerY / len
-      const perpY = vecToPlayerX / len
-      const side = (index % 2 === 0) ? 1 : -1
-      targetX = predictedX + perpX * flankOffset * side
-      targetY = predictedY + perpY * flankOffset * side
-    } else if (enemy.role === 'sentinel') {
-      const playerDist = distance(playerPos, enemy);
-      if (playerDist <= SENTINEL_AGGRO_RADIUS) {
-        // INSEGUE GIOCATORE
-        targetX = predictedX;
-        targetY = predictedY;
-      } else {
-        // PATTUGLIA
-        if (!enemy.patrolTarget || distance(enemy, enemy.patrolTarget) < 20) {
-          // Se non ha un target o l'ha raggiunto, ne genera uno nuovo
-          const home = sectors.get(enemy.home);
-          nextPatrolTarget = { x: home.x + ORIGIN.x, y: home.y + 90 + Math.random() * (GAME_HEIGHT - 180) };
-        }
-        // Punta al target di pattuglia corrente (o a quello appena generato)
-        targetX = nextPatrolTarget ? nextPatrolTarget.x : enemy.x; // Se null, sta fermo? No, punta a se stesso
-        targetY = nextPatrolTarget ? nextPatrolTarget.y : enemy.y;
-      }
-    } // 'aggressive' usa targetX/Y predefiniti (predictedX)
-
-    // Calcola accelerazione verso il target (se non già calcolata dal guardiano in pattuglia)
-    if (accelX === 0 && accelY === 0) {
-      const dx = targetX - enemy.x
-      const dy = targetY - enemy.y
-      let length = Math.sqrt(dx * dx + dy * dy)
-      if (length > 1) { // Applica accelerazione solo se c'è distanza da coprire
-         length = length === 0 ? 1 : length
-         accelX = (dx / length)
-         accelY = (dy / length)
-      }
-    }
-
-    // Evitamento ostacoli per nemici intelligenti e molto intelligenti
-    if (enemy.intelligence === INTELLIGENCE_LEVELS.medium ||
-        enemy.intelligence === INTELLIGENCE_LEVELS.high) {
-      // Calcola vettori di evitamento per tutti gli ostacoli vicini
-      let avoidX = 0;
-      let avoidY = 0;
-
-      for (const obstacle of obstacles) {
-        const obstacleDistance = distance(enemy, obstacle);
-
-        if (obstacleDistance < OBSTACLE_AVOIDANCE_RADIUS) {
-          const avoidVector = calculateAvoidanceVector(enemy, obstacle);
-          const avoidStrength = enemy.intelligence === INTELLIGENCE_LEVELS.high ? 1.5 : 1.0;
-
-          avoidX += avoidVector.x * avoidStrength;
-          avoidY += avoidVector.y * avoidStrength;
-        }
-      }
-
-      // Combina vettore di avoidance con la direzione corrente
-      if (avoidX !== 0 || avoidY !== 0) {
-        // Normalizza il vettore di evitamento
-        const avoidMagnitude = Math.sqrt(avoidX * avoidX + avoidY * avoidY);
-        if (avoidMagnitude > 0) {
-          avoidX /= avoidMagnitude;
-          avoidY /= avoidMagnitude;
-        }
-
-        // Mix evitamento con accelerazione originale
-        const mixFactor = enemy.intelligence === INTELLIGENCE_LEVELS.high ? 0.7 : 0.5;
-        accelX = accelX * (1 - mixFactor) + avoidX * mixFactor;
-        accelY = accelY * (1 - mixFactor) + avoidY * mixFactor;
-
-        // Rinormalizza
-        const newAccelMagnitude = Math.sqrt(accelX * accelX + accelY * accelY);
-        if (newAccelMagnitude > 0) {
-          accelX /= newAccelMagnitude;
-          accelY /= newAccelMagnitude;
-        }
-      }
-    }
-
-    // Aggiorna velocità del nemico con inerzia
-    let newVx = (enemy.vx + accelX * currentAccelerationFactor) * ENEMY_FRICTION
-    let newVy = (enemy.vy + accelY * currentAccelerationFactor) * ENEMY_FRICTION
-    if (Math.abs(newVx) < 0.01) newVx = 0;
-    if (Math.abs(newVy) < 0.01) newVy = 0;
-
-    // Applica velocità alla posizione del nemico SCALATA per boost
-    const newX = enemy.x + newVx * timeScale
-    const newY = enemy.y + newVy * timeScale
-
-    const home = sectors.get(enemy.home)
-    const blocked = newX < home.x + PLAYER_RADIUS || newX > home.x + GAME_WIDTH - PLAYER_RADIUS ||
-      newY < home.y + PLAYER_RADIUS || newY > home.y + GAME_HEIGHT - PLAYER_RADIUS ||
-      obstacles.some(piece => hitsObstacle({ x: newX, y: newY }, piece))
-    if (blocked) return { ...enemy, vx: -newVx * 0.6, vy: -newVy * 0.6, patrolTarget: null }
-    // Ritorna il nemico aggiornato senza ancora risolvere collisioni
-    return {
-      ...enemy,
-      x: newX,
-      y: newY,
-      vx: newVx,
-      vy: newVy,
-      isEngaged: nextIsEngaged,
-      patrolTarget: nextPatrolTarget
-    }
-  });
-
-
 }
 
 function App() {
@@ -667,7 +430,13 @@ function App() {
         saveScore(run.score)
         return newRun(seed)
       }
-      const updated = updateEnemies(activeEnemies, position, velocity, run.bonus, Boolean(run.boost), [...obstacles, ...live], run.sectors)
+      const updated = activeEnemies.map(enemy => {
+        const speed = 4.1 * enemy.speedMultiplier * (run.boost ? ENEMY_SLOW_FACTOR : 1)
+        const lead = enemy.role === 'flanker' ? 11 : enemy.role === 'aggressive' ? 6 : 0
+        const intercept = { x: position.x + velocity.x * lead, y: position.y + velocity.y * lead }
+        const target = obstacles.some(piece => crossesBarrier(position, intercept, piece)) ? position : intercept
+        return advanceEnemy(enemy, target, obstacles, run.sectors, run.frame, speed)
+      })
       const nextEnemies = new Map(updated.map(enemy => [enemy.id, enemy]))
       const contacts = activeEnemies.filter(enemy => enemyContact(previousPosition, position, enemy, nextEnemies.get(enemy.id)))
       if (contacts.length && !run.boost) {
@@ -679,10 +448,15 @@ function App() {
       run.enemies = updated.filter(enemy => !killed.has(enemy.id))
       if (killed.size) {
         run.score += killed.size
-        if (!run.enemies.length) {
-          run.healthy = new Set(run.healthy).add(run.sector.key)
-          run.cleanseFrame = run.frame
-          playSound('cleanse')
+        run.remaining = new Map(run.remaining)
+        for (const enemy of contacts) {
+          const remaining = run.remaining.get(enemy.home) - 1
+          run.remaining.set(enemy.home, remaining)
+          if (remaining === 0) {
+            run.healthy = new Set(run.healthy).add(enemy.home)
+            run.cleanseFrame = run.frame
+            playSound('cleanse')
+          }
         }
       }
 
@@ -692,7 +466,7 @@ function App() {
         playSound('bonus')
         run.score += bonus.points
         const [dx, dy] = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)]
-        const next = run.sectors.get(sectorKey(run.sector.col + dx, run.sector.row + dy))
+        const next = createSector(seed, run.sector.col + dx * 2, run.sector.row + dy * 2)
         run.bonus = createBonus(next, BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)])
       } else if (bonusDistance < BONUS_ATTRACTION_RADIUS) {
         const speed = bonusDistance < AUTO_ATTRACTION_RADIUS ? AUTO_ATTRACTION_SPEED
@@ -783,12 +557,12 @@ function App() {
         <div className={`game-area${speed === 0 ? ' time-stopped' : ''}${speed < 1 ? ' time-dilated' : ''}${isBoostActive ? ' dash-active' : ''}`}
           onPointerDown={startMusic} style={{ '--slow': 1 - speed }}>
           <div className="arena-location">
-            <span className="tissue-status">{sector.tissue} · {game.healthy.has(sector.key) ? 'Sana' : `Infetta · ${enemies.length}`}</span>
+            <span className="tissue-status">{sector.tissue} · {game.healthy.has(sector.key) ? 'Sana' : `Infetta · ${game.remaining.get(sector.key) ?? 0}`}</span>
             <span data-pressure={sector.pressure}>Distanza {Math.round(distanceFromOrigin(position))} · Pressione {sector.pressure}/5</span>
             <span data-time-scale={speed}>{speed === 0 ? 'Tempo fermo' : `Tempo ${Math.round(speed * 100)}%`}</span>
             <span>Bonus {direction} · {bonusDistance}</span>
           </div>
-          {game.healthy.has(sector.key) && game.frame - game.cleanseFrame < 85 && <div className="cleanse-signal" role="status">Tessuto bonificato</div>}
+          {game.frame - game.cleanseFrame < 85 && <div className="cleanse-signal" role="status">Tessuto bonificato</div>}
           <div className="arena-world" style={{ transformOrigin: '0 0', transform: `translate(50%, 50%) scale(0.95238) translate(${-position.x}px, ${-position.y}px)` }}>
             {[...sectors.values()].map(room => (
               <Room healthy={game.healthy.has(room.key)} key={room.key} room={room} opened={game.opened} collected={game.collected.get(room.key) ?? 0} liveMask={room.circuits.reduce((mask, piece, index) => mask | (Number(circuitActive(piece, game.frame)) << index), 0)} />

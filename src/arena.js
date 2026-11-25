@@ -34,9 +34,13 @@ export function gateCenter(seed, col, row, vertical) {
 // A swept segment tested against each rectangle expanded by the moving body's radius.
 export function crossesBarrier(start, end, barrier, radius = RADIUS) {
   return barrier.segments.some(([x, y, width, height]) => {
+    const left = barrier.x + x
+    const top = barrier.y + y
+    if (Math.max(start.x, end.x) < left - radius || Math.min(start.x, end.x) > left + width + radius ||
+        Math.max(start.y, end.y) < top - radius || Math.min(start.y, end.y) > top + height + radius) return false
     let first = 0
     let last = 1
-    const bounds = [[barrier.x + x, width], [barrier.y + y, height]]
+    const bounds = [[left, width], [top, height]]
     for (const [index, axis] of ['x', 'y'].entries()) {
       const [edge, size] = bounds[index]
       const lower = edge - radius - start[axis]
@@ -134,9 +138,8 @@ export function createSector(seed, col, row) {
     if (pressure >= 2 && i % 2 === 0) circuits.push({ ...block, phase: (variant + i * 43) % 180 })
     else obstacles.push(block)
   }
-  // Every fourth pattern has no energy at all. Pickups stay on clear travel lanes.
-  const supplies = col === 0 && row === 0 ? [[470, 344], [175, 300]]
-    : variant % 4 === 0 ? [] : [[variant % 2 ? 250 : 550, 300], ...(variant % 3 === 0 ? [[400, 430]] : [])]
+  const supplies = col === 0 && row === 0 ? [[470, 344]]
+    : variant % 3 === 0 ? [[variant % 2 ? 250 : 550, 300]] : []
   const orbs = supplies.map(([left, top], index) => ({ x: x + left, y: y + top, bit: 1 << index }))
   const roles = Array.from({ length: Math.min(4, pressure + 1) }, (_, index) =>
     ROLES[(variant + index) % ROLES.length])

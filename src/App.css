@@ -234,16 +234,16 @@
 .player {
   z-index: 10;
   border-radius: 50%;
-  background: #d7f6ff;
-  box-shadow: 0 0 0 3px #337fe8, 0 0 15px 5px #429bff78;
+  background: #2688ff;
+  box-shadow: 0 0 8px #2688ffcc, 0 0 4px #2688ff66;
 }
 
-.player-boost { background: #fff; box-shadow: 0 0 0 4px #7bcaff, 0 0 27px 10px #297fffac; }
+.player-boost { background: #2688ff; box-shadow: 0 0 12px #2688ff, 0 0 6px #2688ff; }
 .boost-trail { z-index: 8; width: 6px; height: 6px; border-radius: 50%; background: #80cfff; box-shadow: 0 0 12px 4px #408dff83; }
 
-.enemy { z-index: 6; transform: rotate(45deg); border: 1px solid #ff888b; background: #ff5269; box-shadow: 0 0 5px #ff40599e; }
+.enemy { z-index: 6; border-radius: 50%; border: 1px solid #ff6666; background: #ba161c; box-shadow: 0 0 5px #ff40599e; }
 .enemy-medium { border-color: #ffc0ad; background: #ff7751; }
-.enemy-high { outline: 1px solid #ff4a68; outline-offset: 2px; background: #ffb9ab; }
+.enemy-high { background: #ff0000; box-shadow: 0 0 10px #ff0000cc; }
 
 .bonus { z-index: 5; transform: rotate(45deg); border-radius: 2px; background: #f0fff7; box-shadow: 0 0 8px #dcffed; }
 .bonus-rich { background: #ffe499; box-shadow: 0 0 9px #ffbb55; }
@@ -330,8 +330,6 @@
 .matrix-door.is-open span { color: #b7edff; }
 .matrix-light { outline: 1px solid #9bffb0; outline-offset: 2px; box-shadow: none; }
 .matrix-orb { width: 12px; height: 12px; box-shadow: 0 0 0 2px #2078b1; }
-.enemy { background: #ff6071; outline: 2px solid #ff9a9f; outline-offset: 1px; }
-.player::after { content: ''; position: absolute; inset: -4px; border: 2px solid #cbf4ff; border-radius: 50%; }
 
 .cleanse-signal { position: absolute; z-index: 21; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border: 1px solid #73e8ad; color: #cdffe0; background: #103a2d; }
 .body-guide { color: #c4dcd2; font-size: 12px; }
