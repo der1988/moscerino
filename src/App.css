@@ -260,7 +260,7 @@
   z-index: 14;
   pointer-events: none;
   content: "";
-  box-shadow: inset 0 0 55px 3px #080e10a8;
+  box-shadow: inset 0 0 24px #080e104d;
 }
 
 .time-dilated::after {
@@ -269,7 +269,7 @@
 }
 
 .time-stopped .arena-world * { animation-play-state: paused; }
-.dash-active::before { position: absolute; inset: 0; z-index: 15; pointer-events: none; content: ""; border: 1px solid #83c6ff; box-shadow: inset 0 0 18px #5ba8ff9e; }
+.dash-active::before { position: absolute; inset: 0; z-index: 15; pointer-events: none; content: ""; border: 1px solid #83c6ff; box-shadow: inset 0 0 10px #5ba8ff78; }
 
 .matrix-controls {
   display: flex;
@@ -303,31 +303,36 @@
   .matrix-trace::after, .matrix-door.is-open span { animation: none; }
 }
 
-.matrix-room { --vessel: #b05262; --tissue: #321c29; }
-.matrix-room[data-tissue="Cuore"] { --tissue: #48202d; --vessel: #df586d; }
-.matrix-room[data-tissue="Polmoni"] { --tissue: #182e39; --vessel: #669aab; }
-.matrix-room[data-tissue="Fegato"] { --tissue: #372a1d; --vessel: #c28d52; }
-.matrix-room[data-tissue="Cervello"] { --tissue: #30243a; --vessel: #a483b9; }
+.matrix-room { --vessel: #f28bb1; --tissue: #211621; --structure: #ab6598; }
+.matrix-room[data-tissue="Cuore"] { --tissue: #28151e; --vessel: #ff8c9f; --structure: #cb667b; }
+.matrix-room[data-tissue="Polmoni"] { --tissue: #101f29; --vessel: #7edcff; --structure: #54a6c4; }
+.matrix-room[data-tissue="Fegato"] { --tissue: #241c12; --vessel: #ffd089; --structure: #c49a56; }
+.matrix-room[data-tissue="Cervello"] { --tissue: #1c172b; --vessel: #c6adff; --structure: #a089de; }
+.matrix-room[data-health="sana"] { --tissue: #102722; --vessel: #82ebc2; --structure: #62b49b; }
+
 .matrix-room .sector-floor {
-  background: radial-gradient(ellipse at 22% 24%, #96244336, transparent 32%),
-    repeating-linear-gradient(145deg, transparent 0 24px, #eed6d408 25px 26px, transparent 27px 56px),
-    radial-gradient(ellipse, var(--tissue), #101617);
+  background:
+    linear-gradient(90deg, #ffffff12 1px, transparent 1px),
+    linear-gradient(#ffffff12 1px, transparent 1px),
+    var(--tissue);
+  background-size: 40px 40px;
 }
-.matrix-room .matrix-trace { background: var(--vessel); border-radius: 10px; box-shadow: 0 0 5px var(--vessel); }
-.matrix-room .matrix-trace::after { background: repeating-linear-gradient(110deg, transparent 0 38px,#ffc1b9 40px 47px, transparent 50px 88px); }
-.matrix-room[data-health="sana"] { --tissue: #173b34; --vessel: #68a997; }
-.matrix-room[data-health="sana"] .sector-floor { background: radial-gradient(ellipse, var(--tissue), #0c211c); }
+.matrix-room .room-coordinate { color: var(--structure); font-size: 21px; letter-spacing: .01em; }
+.matrix-room .matrix-wall {
+  background: color-mix(in srgb, var(--structure) 65%, #0a1014);
+  border-color: var(--structure);
+}
+.matrix-room .matrix-trace { background: color-mix(in srgb, var(--vessel) 52%, var(--tissue)); }
+.matrix-room .matrix-trace::after { opacity: .45; }
 .matrix-room[data-health="sana"] .matrix-trace::after { animation-duration: 6s; }
-.enemy { border-radius: 35% 50% 30% 50%; outline: 1px dotted #ff8383; outline-offset: 2px; }
-.player::after { content: ''; position: absolute; inset: -4px; border: 1px solid #cbf4ff; border-radius: 50%; }
+.matrix-door:not(.is-open) { background: #81ef9e; border-color: #c1ffd2; }
+.matrix-door.is-open { border-color: #81ddff; }
+.matrix-door.is-open span { color: #b7edff; }
+.matrix-light { outline: 1px solid #9bffb0; outline-offset: 2px; box-shadow: none; }
+.matrix-orb { width: 12px; height: 12px; box-shadow: 0 0 0 2px #2078b1; }
+.enemy { background: #ff6071; outline: 2px solid #ff9a9f; outline-offset: 1px; }
+.player::after { content: ''; position: absolute; inset: -4px; border: 2px solid #cbf4ff; border-radius: 50%; }
+
 .cleanse-signal { position: absolute; z-index: 21; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border: 1px solid #73e8ad; color: #cdffe0; background: #103a2d; }
 .body-guide { color: #c4dcd2; font-size: 12px; }
-.matrix-room[data-health="infetta"] .sector-floor::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(ellipse at 18% 26%, #dc315428, transparent 25%), radial-gradient(ellipse at 78% 68%, #ac284832, transparent 30%);
-  animation: inflamed-tissue 2.8s ease-in-out infinite alternate;
-}
-@keyframes inflamed-tissue { from { opacity: .35; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .matrix-room[data-health="infetta"] .sector-floor::after { animation: none; }
-}
+.matrix-room[data-health="infetta"] .room-coordinate { text-decoration: underline dotted; text-underline-offset: 5px; }

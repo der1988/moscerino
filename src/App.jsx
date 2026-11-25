@@ -572,7 +572,7 @@ function App() {
     let animationFrame
     let previous = null
     let elapsed = 0
-    let crossHeld = false
+    let r1Held = false
     let padEngaged = false
 
     function tick(pad, requestBoost) {
@@ -714,13 +714,13 @@ function App() {
       previous = timestamp
       if (elapsed >= FRAME_TIME) {
         const pad = Array.from(navigator.getGamepads?.() ?? []).find(gamepad => gamepad?.connected)
-        const cross = Boolean(pad?.buttons[0]?.pressed)
-        const active = Boolean(cross || pad?.buttons[7]?.value > 0 || pad?.axes.some(axis => Math.abs(axis) > 0.23))
+        const r1 = Boolean(pad?.buttons[5]?.pressed)
+        const active = Boolean(r1 || pad?.buttons[7]?.value > 0 || pad?.axes.some(axis => Math.abs(axis) > 0.23))
         if (active && !padEngaged) startMusic()
         padEngaged = active
-        let dash = boostRequested.current || (cross && !crossHeld)
+        let dash = boostRequested.current || (r1 && !r1Held)
         boostRequested.current = false
-        crossHeld = cross
+        r1Held = r1
         while (elapsed >= FRAME_TIME) {
           runRef.current = tick(pad, dash)
           dash = false
@@ -845,7 +845,7 @@ function App() {
       <p className="body-guide"><strong>{freedOrgans === 4 ? 'Quattro organi liberati' : `Organi liberati ${freedOrgans}/4`}</strong> · Ultimo anticorpo · Dal plesso solare: cuore a est, polmoni a ovest, fegato a sud, cervello due stanze a nord.</p>
       <ul className="matrix-controls" aria-label="Comandi">
         <li><kbd>Analogico sinistro / Frecce</kbd> Movimento</li>
-        <li><kbd>× / Spazio</kbd> Scatta contro i patogeni per eliminarli</li>
+        <li><kbd>R1 / Spazio</kbd> Scatta contro i patogeni per eliminarli</li>
         <li><kbd>R2 / Maiusc</kbd> Tempo</li>
         <li><kbd>Analogico destro / WASD</kbd> Anima, rilascia per trasferirti</li>
       </ul>
