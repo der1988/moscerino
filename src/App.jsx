@@ -9,7 +9,7 @@ import { soundtrackUrl, startSoundtrack } from './soundtrack.js'
 
 import { advanceEnemy } from './pursuit.js'
 
-const SPEED_MULTIPLIERS = [0.7, 0.9, 1.1]
+const SPEED_MULTIPLIERS = [0.7, 0.85, 0.92]
 const BONUS_SIZES = [8, 10, 12] // Dimensioni possibili per i bonus (piccolo, medio, grande)
 const PLAYER_FRICTION = 0.93// Frizione del giocatore (ridotta inerzia)
 const AUTO_ATTRACTION_RADIUS = 2 // Raggio entro cui il bonus viene attratto automaticamente
@@ -95,7 +95,7 @@ function newRun(seed) {
   return {
     position: ORIGIN, velocity: { x: 0, y: 0 }, sectors, sector,
     enemies, remaining: new Map([[sector.key, enemies.length]]),
-    bonus: createBonus(sector, BONUS_SIZES[1], true),
+    bonus: createBonus(sectors.get('1,0'), BONUS_SIZES[1]),
     score: 0, trail: [], boost: 0, frame: 0,
     energy: MAX_ENERGY, worldStep: 0, speed: 1, exhausted: false, soul: null,
     healthy: new Set(), inactiveEnemies: new Map(), cleanseFrame: -100,
@@ -466,7 +466,13 @@ function App() {
         playSound('bonus')
         run.score += bonus.points
         const [dx, dy] = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)]
-        const next = createSector(seed, run.sector.col + dx * 2, run.sector.row + dy * 2)
+        let col = run.sector.col + dx * 2
+        let row = run.sector.row + dy * 2
+        if (col === 0 && row === 0) {
+          col = run.sector.col - dx * 2
+          row = run.sector.row - dy * 2
+        }
+        const next = createSector(seed, col, row)
         run.bonus = createBonus(next, BONUS_SIZES[Math.floor(Math.random() * BONUS_SIZES.length)])
       } else if (bonusDistance < BONUS_ATTRACTION_RADIUS) {
         const speed = bonusDistance < AUTO_ATTRACTION_RADIUS ? AUTO_ATTRACTION_SPEED

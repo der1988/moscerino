@@ -76,7 +76,7 @@ function passage(seed, col, row, vertical) {
   const y = row * HEIGHT + (vertical ? 0 : -WALL_DEPTH / 2)
   const id = `${vertical ? 'v' : 'h'}:${col},${row}`
   const symbol = vertical ? '●' : row % 2 === 0 ? '◆' : '▲'
-  const free = vertical && col % 2 !== 0
+  const free = (vertical && col % 2 !== 0) || hash(seed ^ (vertical ? 911 : 613), col, row) % 3 === 0
   const point = vertical ? { x: col * WIDTH, y: y + center } : { x: x + center, y: row * HEIGHT }
   const width = 136 - 12 * pressureAt(point)
   const from = center - width / 2
@@ -124,9 +124,14 @@ export function createSector(seed, col, row) {
       width: Math.max(2, Math.abs(a.x - b.x)), height: Math.max(2, Math.abs(a.y - b.y))
     }))
   })
-  const lights = doors.map((door, index) => ({
-    id: door.id, symbol: door.symbol, x: center.x + (index - 1) * 58, y: center.y - 62
-  }))
+  // The central clearing stays outside every obstacle pocket.
+  const keySpots = [[290, 210], [502, 224], [330, 387], [478, 365]]
+  const keyLayout = hash(seed ^ 397, col, row)
+  const lights = doors.map((door, index) => {
+    const [left, top] = keySpots[(keyLayout + index) % keySpots.length]
+    const offset = hash(seed ^ (701 + index), col, row)
+    return { id: door.id, symbol: door.symbol, x: x + left + offset % 33 - 16, y: y + top + (offset >>> 8) % 29 - 14 }
+  })
   const obstacles = [north.wall, west.wall]
   const pockets = [[128, 105], [565, 115], [144, 437], [560, 418]]
   const tissue = tissueAt(col, row)
@@ -134,7 +139,8 @@ export function createSector(seed, col, row) {
   for (let i = 0; i < Math.min(4, pressure); i++) {
     const [left, top] = pockets[(i + variant % pockets.length) % pockets.length]
     const id = `${key}:${i}`
-    const block = { id, x: x + left, y: y + top, segments: tissueForms[tissue] }
+    const layout = hash(seed ^ (123 + i), col, row)
+    const block = { id, x: x + left + layout % 25 - 12, y: y + top + (layout >>> 8) % 25 - 12, segments: tissueForms[tissue] }
     if (pressure >= 2 && i % 2 === 0) circuits.push({ ...block, phase: (variant + i * 43) % 180 })
     else obstacles.push(block)
   }
@@ -158,11 +164,11 @@ export function loadNearby(sectors, seed, col, row) {
   }
 }
 
-export function createBonus(sector, size, first = false, random = Math.random) {
-  const cross = first ? { x: ORIGIN.x + 105, y: ORIGIN.y } : random() < 0.5
+export function createBonus(sector, size, random = Math.random) {
+  const cross = random() < 0.5
     ? { x: 85 + random() * (WIDTH - 170), y: ORIGIN.y }
     : { x: ORIGIN.x, y: 85 + random() * (HEIGHT - 170) }
-  const points = !first && sector.pressure >= 2 && random() < 0.35 ? 2 : 1
+  const points = sector.pressure >= 2 && random() < 0.35 ? 2 : 1
   return { x: sector.x + cross.x, y: sector.y + cross.y, size: points > 1 ? 14 : size, points }
 }
 
