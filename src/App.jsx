@@ -243,25 +243,26 @@ function enterRoom(run, seed) {
 }
 
 const PATROL_POINTS = [[285, 210], [515, 210], [515, 390], [285, 390]]
-const PURSUIT_MEMORY = 80
+const PURSUIT_MEMORY = { low: 48, medium: 65, high: 85 }
 const EXIT_LOOKAHEAD = 24
 
 function updatePatrol(enemy, run, obstacles) {
   const seesPlayer = enemy.home === run.sector.key
   const speed = 4.1 * enemy.speedMultiplier * (run.boost ? ENEMY_SLOW_FACTOR : 1)
   if (seesPlayer) {
-    const lead = enemy.role === 'flanker' ? 11 : enemy.role === 'aggressive' ? 6 : 0
+    const lead = enemy.intelligence === 'high' ? (enemy.role === 'flanker' ? 18 : 12)
+      : enemy.intelligence === 'medium' ? 6 : 0
     const intercept = { x: run.position.x + run.velocity.x * lead, y: run.position.y + run.velocity.y * lead }
     const target = obstacles.some(piece => crossesBarrier(run.position, intercept, piece)) ? run.position : intercept
     const lastSeen = { x: run.position.x, y: run.position.y }
     const memory = { x: lastSeen.x + run.velocity.x * EXIT_LOOKAHEAD, y: lastSeen.y + run.velocity.y * EXIT_LOOKAHEAD }
-    return advanceEnemy({ ...enemy, memory, lastSeen, chaseUntil: run.frame + PURSUIT_MEMORY },
-      target, obstacles, run.sectors, run.frame, speed)
+    return advanceEnemy({ ...enemy, memory, lastSeen, chaseUntil: run.frame + PURSUIT_MEMORY[enemy.intelligence] },
+      target, obstacles, run.sectors, run.frame, speed, enemy.intelligence)
   }
 
   if (run.frame < enemy.chaseUntil && distance(enemy, enemy.memory) > 10) {
     const goal = obstacles.some(piece => crossesBarrier(enemy.lastSeen, enemy.memory, piece)) ? enemy.lastSeen : enemy.memory
-    if (distance(enemy, goal) > 10) return advanceEnemy(enemy, goal, obstacles, run.sectors, run.frame, speed)
+    if (distance(enemy, goal) > 10) return advanceEnemy(enemy, goal, obstacles, run.sectors, run.frame, speed, enemy.intelligence)
   }
 
   const home = sectorAt(enemy.post)

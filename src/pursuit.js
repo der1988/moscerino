@@ -50,15 +50,16 @@ export function pursuitPath(start, target, walls, sectors) {
   return []
 }
 
-export function advanceEnemy(enemy, target, walls, sectors, frame, speed) {
+export function advanceEnemy(enemy, target, walls, sectors, frame, speed, navigation = 'high') {
   let path = enemy.path ?? []
   let retry = enemy.retry ?? 0
   let waypoint = target
-  if (!clear(enemy, target, walls)) {
+  if (navigation !== 'low' && !clear(enemy, target, walls)) {
     if (path.length && distance(enemy, path[0]) < 5) path = path.slice(1)
     if (frame >= retry || (path.length && !clear(enemy, path[0], walls))) {
       path = pursuitPath(enemy, target, walls, sectors)
-      retry = frame + 24
+      if (navigation === 'medium' && path.length > 3) path = []
+      retry = frame + (navigation === 'medium' ? 42 : 18)
     }
     waypoint = path[0]
   } else {
