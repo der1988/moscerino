@@ -70,6 +70,8 @@ function createEnemy(sector, player, enemies) {
     ...point,
     id: nextEnemyId++,
     home: sector.key,
+    post: point,
+    patrolIndex: nextEnemyId % 4,
     role: roles[Math.floor(Math.random() * roles.length)],
     vx: 0, vy: 0,
     speedMultiplier: SPEED_MULTIPLIERS[Math.floor(Math.random() * (sector.pressure >= 2 ? 3 : 1))],
@@ -91,16 +93,28 @@ function newRun(seed) {
   const sectors = new Map()
   loadNearby(sectors, seed, 0, 0)
   const sector = sectors.get('0,0')
-  const enemies = spawnEnemies(sector, ORIGIN, [], 1)
-  return {
+  const run = {
     position: ORIGIN, velocity: { x: 0, y: 0 }, sectors, sector,
-    enemies, remaining: new Map([[sector.key, enemies.length]]),
+    enemies: [], remaining: new Map(),
     bonus: createBonus(sectors.get('1,0'), BONUS_SIZES[1]),
     score: 0, trail: [], boost: 0, frame: 0,
     energy: MAX_ENERGY, worldStep: 0, speed: 1, exhausted: false, soul: null,
     healthy: new Set(), inactiveEnemies: new Map(), cleanseFrame: -100,
     opened: new Set(), collected: new Map(), soulGesture: false, soulLanding: null
   }
+  populateNearby(run)
+  return run
+}
+
+function populateNearby(run) {
+  const remaining = new Map(run.remaining)
+  for (const room of run.sectors.values()) {
+    if (remaining.has(room.key)) continue
+    const enemies = spawnEnemies(room, run.position, [], room.pressure + 1)
+    run.enemies.push(...enemies)
+    remaining.set(room.key, enemies.length)
+  }
+  run.remaining = remaining
 }
 
 function readStick(pad, axis = 0) {
@@ -225,11 +239,41 @@ function enterRoom(run, seed) {
     inactive.delete(roomKey)
   }
   run.inactiveEnemies = inactive
-  if (!run.remaining.has(key)) {
-    const spawned = spawnEnemies(run.sector, run.position, [], run.sector.pressure + 1)
-    run.enemies.push(...spawned)
-    run.remaining = new Map(run.remaining).set(key, spawned.length)
+  populateNearby(run)
+}
+
+const PATROL_POINTS = [[285, 210], [515, 210], [515, 390], [285, 390]]
+const PURSUIT_MEMORY = 80
+const EXIT_LOOKAHEAD = 24
+
+function updatePatrol(enemy, run, obstacles) {
+  const seesPlayer = enemy.home === run.sector.key
+  const speed = 4.1 * enemy.speedMultiplier * (run.boost ? ENEMY_SLOW_FACTOR : 1)
+  if (seesPlayer) {
+    const lead = enemy.role === 'flanker' ? 11 : enemy.role === 'aggressive' ? 6 : 0
+    const intercept = { x: run.position.x + run.velocity.x * lead, y: run.position.y + run.velocity.y * lead }
+    const target = obstacles.some(piece => crossesBarrier(run.position, intercept, piece)) ? run.position : intercept
+    const lastSeen = { x: run.position.x, y: run.position.y }
+    const memory = { x: lastSeen.x + run.velocity.x * EXIT_LOOKAHEAD, y: lastSeen.y + run.velocity.y * EXIT_LOOKAHEAD }
+    return advanceEnemy({ ...enemy, memory, lastSeen, chaseUntil: run.frame + PURSUIT_MEMORY },
+      target, obstacles, run.sectors, run.frame, speed)
   }
+
+  if (run.frame < enemy.chaseUntil && distance(enemy, enemy.memory) > 10) {
+    const goal = obstacles.some(piece => crossesBarrier(enemy.lastSeen, enemy.memory, piece)) ? enemy.lastSeen : enemy.memory
+    if (distance(enemy, goal) > 10) return advanceEnemy(enemy, goal, obstacles, run.sectors, run.frame, speed)
+  }
+
+  const home = sectorAt(enemy.post)
+  const patrolIndex = enemy.patrolIndex
+  const patrolPoint = ([x, y]) => ({ x: home.col * GAME_WIDTH + x, y: home.row * GAME_HEIGHT + y })
+  const nextIndex = distance(enemy, patrolPoint(PATROL_POINTS[patrolIndex])) < 12 ? (patrolIndex + 1) % PATROL_POINTS.length : patrolIndex
+  const patrol = { ...enemy, patrolIndex: nextIndex, chaseUntil: 0 }
+  if (enemy.chaseUntil) {
+    patrol.path = []
+    patrol.retry = 0
+  }
+  return advanceEnemy(patrol, patrolPoint(PATROL_POINTS[nextIndex]), obstacles, run.sectors, run.frame, speed * .48)
 }
 
 function soulTarget(position, soul) {
@@ -430,13 +474,7 @@ function App() {
         saveScore(run.score)
         return newRun(seed)
       }
-      const updated = activeEnemies.map(enemy => {
-        const speed = 4.1 * enemy.speedMultiplier * (run.boost ? ENEMY_SLOW_FACTOR : 1)
-        const lead = enemy.role === 'flanker' ? 11 : enemy.role === 'aggressive' ? 6 : 0
-        const intercept = { x: position.x + velocity.x * lead, y: position.y + velocity.y * lead }
-        const target = obstacles.some(piece => crossesBarrier(position, intercept, piece)) ? position : intercept
-        return advanceEnemy(enemy, target, obstacles, run.sectors, run.frame, speed)
-      })
+      const updated = activeEnemies.map(enemy => updatePatrol(enemy, run, obstacles))
       const nextEnemies = new Map(updated.map(enemy => [enemy.id, enemy]))
       const contacts = activeEnemies.filter(enemy => enemyContact(previousPosition, position, enemy, nextEnemies.get(enemy.id)))
       if (contacts.length && !run.boost) {
