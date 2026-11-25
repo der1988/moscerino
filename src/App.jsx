@@ -60,6 +60,7 @@ function enemyContact(player, nextPlayer, enemy, nextEnemy) {
 }
 
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1]]
+const ORGAN_ROOMS = ['1,0', '-1,0', '0,1', '0,-2']
 const FRAME_TIME = 1000 / 60
 let nextEnemyId = 0
 
@@ -104,6 +105,7 @@ function newRun(seed) {
     bonus: createBonus(sector, BONUS_SIZES[1], true),
     score: 0, trail: [], boost: 0, frame: 0,
     energy: MAX_ENERGY, worldStep: 0, speed: 1, exhausted: false, soul: null,
+    healthy: new Set(), encounters: new Map(), cleanseFrame: -100,
     opened: new Set(), collected: new Map(), soulGesture: false, soulLanding: null
   }
 }
@@ -153,7 +155,7 @@ function solidBarriers(run) {
 }
 
 function liveCircuits(run) {
-  return [...run.sectors.values()].flatMap(room => room.circuits)
+  return [...run.sectors.values()].flatMap(room => run.healthy.has(room.key) ? [] : room.circuits)
     .filter(circuit => circuitActive(circuit, run.frame))
 }
 
@@ -164,17 +166,17 @@ const Obstacle = React.memo(function Obstacle({ obstacle, className = 'matrix-wa
   ))
 })
 
-const Room = React.memo(function Room({ room, opened, collected, liveMask }) {
+const Room = React.memo(function Room({ room, opened, collected, liveMask, healthy }) {
   return (
-    <div className="matrix-room" data-room={room.key} data-pressure={room.pressure}>
+    <div className="matrix-room" data-room={room.key} data-tissue={room.tissue} data-health={healthy ? 'sana' : 'infetta'} data-pressure={room.pressure}>
       <div className="sector-floor" data-band={room.pressure}
         style={{ left: room.x, top: room.y, width: GAME_WIDTH, height: GAME_HEIGHT }}>
-        <span className="room-coordinate" aria-hidden="true">{room.col} / {room.row}</span>
+        <span className="room-coordinate" aria-hidden="true">{room.tissue}</span>
       </div>
       {room.traces.map((trace, index) => <div key={index} className="matrix-trace" style={trace} aria-hidden="true" />)}
       {room.obstacles.map(obstacle => <Obstacle key={obstacle.id} obstacle={obstacle} />)}
       {room.circuits.map((circuit, index) => <Obstacle key={circuit.id} obstacle={circuit}
-        className={liveMask & (1 << index) ? 'matrix-circuit is-live' : 'matrix-circuit'} />)}
+        className={!healthy && liveMask & (1 << index) ? 'matrix-circuit is-live' : 'matrix-circuit'} />)}
       {room.doors.map(door => (
         <div key={door.id} className={`matrix-door${opened.has(door.id) ? ' is-open' : ''}`}
           data-symbol={door.symbol} data-door={door.id} aria-label={`Porta ${door.symbol}${opened.has(door.id) ? ' aperta' : ' chiusa'}`}
@@ -215,10 +217,11 @@ function enterRoom(run, seed) {
   const sectors = new Map(run.sectors)
   loadNearby(sectors, seed, col, row)
   run.sectors = sectors
+  run.encounters.set(run.sector.key, run.enemies)
   run.sector = sectors.get(key)
   // The local pressure determines the next encounter, including on a return trip.
   const sector = run.sector
-  run.enemies = spawnEnemies(sector, run.position, [], sector.pressure + 1)
+  run.enemies = run.encounters.get(key) ?? spawnEnemies(sector, run.position, [], sector.pressure + 1)
 }
 
 function soulTarget(position, soul) {
@@ -248,19 +251,7 @@ function updateEnemies(enemies, playerPos, playerVel, bonusPos, isBoostMode, obs
   const predictedX = playerPos.x + playerVel.x * PREDICTION_FACTOR;
   const predictedY = playerPos.y + playerVel.y * PREDICTION_FACTOR;
 
-  // Primo passo: filtra eventuali nemici che hanno colpito ostacoli
-  let updatedEnemies = enemies.filter(enemy => {
-    // Controlla collisioni con ostacoli
-    for (const obstacle of obstacles) {
-      if (hitsObstacle(enemy, obstacle)) {
-        return false; // Nemico eliminato
-      }
-    }
-    return true;
-  });
-
-  // Secondo passo: aggiorna posizione e velocità
-  updatedEnemies = updatedEnemies.map((enemy, index) => {
+  return enemies.map((enemy, index) => {
     let targetX = predictedX;
     let targetY = predictedY;
     let accelX = 0;
@@ -462,6 +453,11 @@ function updateEnemies(enemies, playerPos, playerVel, bonusPos, isBoostMode, obs
     const newX = enemy.x + newVx * timeScale
     const newY = enemy.y + newVy * timeScale
 
+    const home = sectors.get(enemy.home)
+    const blocked = newX < home.x + PLAYER_RADIUS || newX > home.x + GAME_WIDTH - PLAYER_RADIUS ||
+      newY < home.y + PLAYER_RADIUS || newY > home.y + GAME_HEIGHT - PLAYER_RADIUS ||
+      obstacles.some(piece => hitsObstacle({ x: newX, y: newY }, piece))
+    if (blocked) return { ...enemy, vx: -newVx * 0.6, vy: -newVy * 0.6, patrolTarget: null }
     // Ritorna il nemico aggiornato senza ancora risolvere collisioni
     return {
       ...enemy,
@@ -474,35 +470,7 @@ function updateEnemies(enemies, playerPos, playerVel, bonusPos, isBoostMode, obs
     }
   });
 
-  // Terzo passo: Risolvi le collisioni tra nemici
-  const enemiesToRemove = new Set();
 
-  for (let i = 0; i < updatedEnemies.length; i++) {
-    for (let j = i + 1; j < updatedEnemies.length; j++) {
-      const enemy1 = updatedEnemies[i];
-      const enemy2 = updatedEnemies[j];
-
-      const dx = enemy2.x - enemy1.x;
-      const dy = enemy2.y - enemy1.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      const totalRadius = PLAYER_RADIUS * 2;
-
-      if (dist < totalRadius) {
-        enemiesToRemove.add(i);
-        enemiesToRemove.add(j);
-      }
-    }
-  }
-
-  if (enemiesToRemove.size > 0) {
-    updatedEnemies = updatedEnemies.filter((_, index) => !enemiesToRemove.has(index));
-  }
-
-  return updatedEnemies.filter(enemy => {
-    const home = sectors.get(enemy.home);
-    return distance(enemy, { x: home.x + ORIGIN.x, y: home.y + ORIGIN.y }) < GAME_WIDTH;
-  });
 }
 
 function App() {
@@ -539,7 +507,7 @@ function App() {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       const now = context.currentTime;
-      const tones = { boost: [220, 880, 0.24, 'sawtooth'], bonus: [520, 980, 0.13, 'sine'], hit: [240, 65, 0.32, 'triangle'], door: [320, 660, 0.18, 'sine'], transfer: [880, 260, 0.2, 'sine'] };
+      const tones = { cleanse: [392, 784, 0.45, 'sine'], boost: [220, 880, 0.24, 'sawtooth'], bonus: [520, 980, 0.13, 'sine'], hit: [240, 65, 0.32, 'triangle'], door: [320, 660, 0.18, 'sine'], transfer: [880, 260, 0.2, 'sine'] };
       const [start, end, duration, shape] = tones[kind];
       oscillator.type = shape;
       oscillator.frequency.setValueAtTime(start, now);
@@ -701,12 +669,22 @@ function App() {
       }
       const updated = updateEnemies(activeEnemies, position, velocity, run.bonus, Boolean(run.boost), [...obstacles, ...live], run.sectors)
       const nextEnemies = new Map(updated.map(enemy => [enemy.id, enemy]))
-      if (activeEnemies.some(enemy => enemyContact(previousPosition, position, enemy, nextEnemies.get(enemy.id)))) {
+      const contacts = activeEnemies.filter(enemy => enemyContact(previousPosition, position, enemy, nextEnemies.get(enemy.id)))
+      if (contacts.length && !run.boost) {
         playSound('hit')
         saveScore(run.score)
         return newRun(seed)
       }
-      run.enemies = updated
+      const killed = new Set(contacts.map(enemy => enemy.id))
+      run.enemies = updated.filter(enemy => !killed.has(enemy.id))
+      if (killed.size) {
+        run.score += killed.size
+        if (!run.enemies.length) {
+          run.healthy = new Set(run.healthy).add(run.sector.key)
+          run.cleanseFrame = run.frame
+          playSound('cleanse')
+        }
+      }
 
       const bonus = run.bonus
       const bonusDistance = distance(position, bonus)
@@ -766,6 +744,7 @@ function App() {
   const landing = game.soulLanding
   const showLanding = blocked && landing && canTransfer(landing)
   const level = Math.floor(score / 5) + 1
+  const freedOrgans = ORGAN_ROOMS.filter(key => game.healthy.has(key)).length
   const highScore = leaderboard[0]?.score || 0
   const waypoint = bonusWaypoint(seed, position, bonusPosition)
   const bonusAngle = Math.atan2(waypoint.y - position.y, waypoint.x - position.x)
@@ -804,13 +783,15 @@ function App() {
         <div className={`game-area${speed === 0 ? ' time-stopped' : ''}${speed < 1 ? ' time-dilated' : ''}${isBoostActive ? ' dash-active' : ''}`}
           onPointerDown={startMusic} style={{ '--slow': 1 - speed }}>
           <div className="arena-location">
+            <span className="tissue-status">{sector.tissue} · {game.healthy.has(sector.key) ? 'Sana' : `Infetta · ${enemies.length}`}</span>
             <span data-pressure={sector.pressure}>Distanza {Math.round(distanceFromOrigin(position))} · Pressione {sector.pressure}/5</span>
             <span data-time-scale={speed}>{speed === 0 ? 'Tempo fermo' : `Tempo ${Math.round(speed * 100)}%`}</span>
             <span>Bonus {direction} · {bonusDistance}</span>
           </div>
-          <div className="arena-world" style={{ transform: `translate3d(calc(50% - ${position.x}px), calc(50% - ${position.y}px), 0)` }}>
+          {game.healthy.has(sector.key) && game.frame - game.cleanseFrame < 85 && <div className="cleanse-signal" role="status">Tessuto bonificato</div>}
+          <div className="arena-world" style={{ transformOrigin: '0 0', transform: `translate(50%, 50%) scale(0.95238) translate(${-position.x}px, ${-position.y}px)` }}>
             {[...sectors.values()].map(room => (
-              <Room key={room.key} room={room} opened={game.opened} collected={game.collected.get(room.key) ?? 0} liveMask={room.circuits.reduce((mask, piece, index) => mask | (Number(circuitActive(piece, game.frame)) << index), 0)} />
+              <Room healthy={game.healthy.has(room.key)} key={room.key} room={room} opened={game.opened} collected={game.collected.get(room.key) ?? 0} liveMask={room.circuits.reduce((mask, piece, index) => mask | (Number(circuitActive(piece, game.frame)) << index), 0)} />
             ))}
             {showLanding && <div className="soul-landing" style={{ left: landing.x, top: landing.y }} aria-label="Ultima posizione valida" />}
             {target && (
@@ -861,9 +842,10 @@ function App() {
           </div>
         </div>
       </div>
+      <p className="body-guide"><strong>{freedOrgans === 4 ? 'Quattro organi liberati' : `Organi liberati ${freedOrgans}/4`}</strong> · Ultimo anticorpo · Dal plesso solare: cuore a est, polmoni a ovest, fegato a sud, cervello due stanze a nord.</p>
       <ul className="matrix-controls" aria-label="Comandi">
         <li><kbd>Analogico sinistro / Frecce</kbd> Movimento</li>
-        <li><kbd>× / Spazio</kbd> Scatto</li>
+        <li><kbd>× / Spazio</kbd> Scatta contro i patogeni per eliminarli</li>
         <li><kbd>R2 / Maiusc</kbd> Tempo</li>
         <li><kbd>Analogico destro / WASD</kbd> Anima, rilascia per trasferirti</li>
       </ul>

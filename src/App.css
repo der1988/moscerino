@@ -302,3 +302,32 @@
 @media (prefers-reduced-motion: reduce) {
   .matrix-trace::after, .matrix-door.is-open span { animation: none; }
 }
+
+.matrix-room { --vessel: #b05262; --tissue: #321c29; }
+.matrix-room[data-tissue="Cuore"] { --tissue: #48202d; --vessel: #df586d; }
+.matrix-room[data-tissue="Polmoni"] { --tissue: #182e39; --vessel: #669aab; }
+.matrix-room[data-tissue="Fegato"] { --tissue: #372a1d; --vessel: #c28d52; }
+.matrix-room[data-tissue="Cervello"] { --tissue: #30243a; --vessel: #a483b9; }
+.matrix-room .sector-floor {
+  background: radial-gradient(ellipse at 22% 24%, #96244336, transparent 32%),
+    repeating-linear-gradient(145deg, transparent 0 24px, #eed6d408 25px 26px, transparent 27px 56px),
+    radial-gradient(ellipse, var(--tissue), #101617);
+}
+.matrix-room .matrix-trace { background: var(--vessel); border-radius: 10px; box-shadow: 0 0 5px var(--vessel); }
+.matrix-room .matrix-trace::after { background: repeating-linear-gradient(110deg, transparent 0 38px,#ffc1b9 40px 47px, transparent 50px 88px); }
+.matrix-room[data-health="sana"] { --tissue: #173b34; --vessel: #68a997; }
+.matrix-room[data-health="sana"] .sector-floor { background: radial-gradient(ellipse, var(--tissue), #0c211c); }
+.matrix-room[data-health="sana"] .matrix-trace::after { animation-duration: 6s; }
+.enemy { border-radius: 35% 50% 30% 50%; outline: 1px dotted #ff8383; outline-offset: 2px; }
+.player::after { content: ''; position: absolute; inset: -4px; border: 1px solid #cbf4ff; border-radius: 50%; }
+.cleanse-signal { position: absolute; z-index: 21; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border: 1px solid #73e8ad; color: #cdffe0; background: #103a2d; }
+.body-guide { color: #c4dcd2; font-size: 12px; }
+.matrix-room[data-health="infetta"] .sector-floor::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 18% 26%, #dc315428, transparent 25%), radial-gradient(ellipse at 78% 68%, #ac284832, transparent 30%);
+  animation: inflamed-tissue 2.8s ease-in-out infinite alternate;
+}
+@keyframes inflamed-tissue { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .matrix-room[data-health="infetta"] .sector-floor::after { animation: none; }
+}

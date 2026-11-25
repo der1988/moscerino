@@ -87,6 +87,21 @@ export function circuitActive(circuit, frame) {
   return (frame + circuit.phase) % 180 >= 95
 }
 
+function tissueAt(col, row) {
+  if (!col && !row) return 'Plesso solare'
+  if (row <= -2 && -row >= Math.abs(col)) return 'Cervello'
+  if (row > 0 && row >= Math.abs(col)) return 'Fegato'
+  if (col > 0 && col >= Math.abs(row)) return 'Cuore'
+  return 'Polmoni'
+}
+
+const tissueForms = {
+  Cuore: [[0, 12, 38, 9], [30, 0, 10, 21], [40, 0, 36, 9]],
+  Polmoni: [[38, 0, 8, 54], [8, 16, 34, 8], [42, 32, 35, 8]],
+  Fegato: [[0, 0, 96, 10], [12, 22, 63, 8]],
+  Cervello: [[0, 0, 70, 8], [62, 8, 8, 20], [18, 24, 50, 8], [18, 32, 8, 16]]
+}
+
 export function createSector(seed, col, row) {
   const key = sectorKey(col, row)
   const x = col * WIDTH
@@ -110,11 +125,12 @@ export function createSector(seed, col, row) {
   }))
   const obstacles = [north.wall, west.wall]
   const pockets = [[128, 105], [565, 115], [144, 437], [560, 418]]
+  const tissue = tissueAt(col, row)
   const circuits = []
   for (let i = 0; i < Math.min(4, pressure); i++) {
     const [left, top] = pockets[(i + variant % pockets.length) % pockets.length]
     const id = `${key}:${i}`
-    const block = { id, x: x + left, y: y + top, segments: [[0, 0, 82 + pressure * 5, 12], [0, 0, 12, 55]] }
+    const block = { id, x: x + left, y: y + top, segments: tissueForms[tissue] }
     if (pressure >= 2 && i % 2 === 0) circuits.push({ ...block, phase: (variant + i * 43) % 180 })
     else obstacles.push(block)
   }
@@ -124,7 +140,7 @@ export function createSector(seed, col, row) {
   const orbs = supplies.map(([left, top], index) => ({ x: x + left, y: y + top, bit: 1 << index }))
   const roles = Array.from({ length: Math.min(4, pressure + 1) }, (_, index) =>
     ROLES[(variant + index) % ROLES.length])
-  return { key, col, row, x, y, pressure, roles, traces, obstacles, circuits, doors, lights, orbs }
+  return { key, col, row, x, y, tissue, pressure, roles, traces, obstacles, circuits, doors, lights, orbs }
 }
 
 export function loadNearby(sectors, seed, col, row) {
