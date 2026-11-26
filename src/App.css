@@ -1,336 +1,219 @@
-.matrix-shell {
-  width: min(100% - 32px, 1060px);
-  margin-inline: auto;
-  padding-block: 28px 32px;
+@font-face {
+  font-family: 'Matrix';
+  src: url('https://fonts.cdnfonts.com/css/matrix') format('woff2');
 }
 
-.matrix-header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.matrix-header h1 {
+body {
   margin: 0;
-  color: #e9fff0;
-  font-size: clamp(27px, 5vw, 48px);
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -.065em;
-  text-shadow: 0 0 26px #82ff9840;
+  background-color: #000;
+  overflow: auto;
+  font-family: 'Courier New', monospace;
+  color: #0f0;
 }
 
-.player-profile {
-  display: grid;
-  gap: 5px;
-  color: #85a899;
-  font-size: 10px;
-  letter-spacing: .1em;
+#root {
+  margin: 0 auto;
+  padding: 0;
+  text-align: center;
+  background-color: #000;
+  position: relative;
 }
 
-.player-profile input {
-  width: 145px;
-  padding: 7px 9px;
-  border: 1px solid #395349;
-  border-radius: 3px;
-  background: #0c1815;
-  color: #e1faeb;
-  font-size: 13px;
-  letter-spacing: 0;
-}
+/* Rimuovo effetto pioggia di codice Matrix e tutte le classi correlate */
 
 .game-container {
+  position: relative;
+  z-index: 1;
+  border-radius: 5px;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.6);
   overflow: hidden;
-  border: 1px solid #39574c;
-  border-radius: 8px;
-  background: #0b1514;
-  box-shadow: 0 20px 80px #0009, 0 0 35px #409b6d11;
+  will-change: transform;
 }
 
 .ui-bar {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(55px, 105px)) minmax(88px, 260px);
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 15px;
-  border-bottom: 1px solid #324e43;
-  background: #101e1b;
+  background: rgba(0, 20, 0, 0.8);
+  border: 1px solid #0f0;
+  border-radius: 5px 5px 0 0;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5) inset;
+  text-shadow: 0 0 3px #0f0;
 }
-
-.info-text { display: grid; gap: 4px; }
-.info-text span, .matrix-energy label { color: #9ec1b1; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.info-text strong { color: #e5f8e9; font-size: 17px; line-height: 1; }
-
-.matrix-energy { display: grid; gap: 7px; }
-.matrix-energy label { display: flex; justify-content: space-between; gap: 4px; color: #a6e8ff; }
-
-.matrix-energy progress {
-  appearance: none;
-  width: 100%;
-  height: 8px;
-  border: 1px solid #31698a;
-  border-radius: 20px;
-  overflow: hidden;
-  background: #0a202c;
-  accent-color: #65deff;
-  box-shadow: 0 0 10px #4bc8fa50;
-}
-
-.matrix-energy progress::-webkit-progress-bar { background: #0a202c; }
-.matrix-energy progress::-webkit-progress-value { background: linear-gradient(90deg, #2489ff, #8ff4ff); }
-.matrix-energy progress::-moz-progress-bar { background: linear-gradient(90deg, #2489ff, #8ff4ff); }
 
 .game-area {
   position: relative;
+  background: rgba(0, 5, 0, 0.9);
+  border: 1px solid #0f0;
   overflow: hidden;
-  isolation: isolate;
-  height: clamp(280px, 66vh, 620px);
-  background: #081411;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.4) inset;
 }
 
-.arena-location {
+.grid-background {
   position: absolute;
-  z-index: 20;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 5px;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px; /* Griglia più grande per meno linee e meno carico */
+  z-index: 1;
   pointer-events: none;
 }
-
-.arena-location span {
-  padding: 5px 8px;
-  border: 1px solid #3b6253;
-  border-radius: 2px;
-  background: #0e1d19f2;
-  color: #d4ebde;
-  font-size: 11px;
-}
-
-.arena-location [data-time-scale] { color: #b5e8fb; }
-
-.arena-world { position: absolute; inset: 0; will-change: transform; }
-
-.sector-floor {
-  position: absolute;
-  --signal: #80ffe1;
-  --ground: #102923;
-  --tile: 30px;
-  background:
-    radial-gradient(ellipse at center, var(--ground), transparent 73%),
-    repeating-linear-gradient(0deg, #63d6ac12 0 1px, transparent 1px var(--tile)),
-    repeating-linear-gradient(90deg, #63d6ac12 0 1px, transparent 1px var(--tile)),
-    #0b1816;
-}
-
-.sector-floor[data-band="1"], .sector-floor[data-band="2"] { --ground: #10272b; --signal: #75d6e9; --tile: 25px; }
-.sector-floor[data-band="3"] { --ground: #242036; --signal: #b4a1fa; --tile: 20px; }
-.sector-floor[data-band="4"], .sector-floor[data-band="5"] { --ground: #302331; --signal: #eba9d7; --tile: 16px; }
-
-.room-coordinate {
-  position: absolute;
-  inset: 28px auto auto 34px;
-  color: color-mix(in srgb, var(--signal) 40%, #091615);
-  font-size: 32px;
-  font-weight: 600;
-  letter-spacing: -.09em;
-  user-select: none;
-}
-
-.matrix-trace {
-  position: absolute;
-  z-index: 1;
-  background: #335e51;
-  box-shadow: 0 0 7px #7dffd72e;
-  overflow: hidden;
-}
-
-.matrix-trace::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(120deg, transparent 0 23px, #9afee0 24px 34px, transparent 35px 90px);
-  background-size: 104px 104px;
-  opacity: .65;
-  animation: signal 3s linear infinite;
-}
-
-@keyframes signal { to { background-position: 104px 104px; } }
-
-.matrix-wall, .matrix-circuit, .matrix-door, .matrix-light, .matrix-orb, .matrix-soul, .soul-link,
-.soul-landing, .boost-trail { position: absolute; pointer-events: none; }
-
-.matrix-wall {
-  z-index: 2;
-  background: #253b36;
-  border: 1px solid #52736a;
-}
-
-.matrix-circuit {
-  z-index: 3;
-  border: 1px dashed #cd885d;
-  background: #6c36213c;
-}
-
-.matrix-circuit.is-live {
-  border-style: solid;
-  background: repeating-linear-gradient(115deg, #944822 0 5px, #ffc391 5px 8px, #944822 8px 13px);
-  box-shadow: 0 0 13px #e97f4d81;
-}
-
-.matrix-door {
-  z-index: 4;
-  display: grid;
-  place-content: center;
-  transform: translate(-50%, -50%);
-  border: 1px solid #9aebae;
-  border-radius: 2px;
-  background: repeating-linear-gradient(125deg, #29543d 0 6px, #426a52 6px 10px);
-}
-
-.matrix-door span {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-content: center;
-  border: 1px solid #7ccd9b;
-  border-radius: 3px;
-  background: #16382a;
-  color: #bcffd0;
-  font-size: 14px;
-}
-
-.matrix-door.is-open { border: 1px dashed #64a7aa; background: transparent; }
-.matrix-door.is-open span { border-color: #57828d; background: #102c31; color: #95dfed; animation: door-unlock .35s ease-out; }
-@keyframes door-unlock { 35% { box-shadow: 0 0 0 7px #88ffbd35, 0 0 20px #85ffc3; } }
-
-.matrix-light, .matrix-orb, .matrix-soul, .soul-landing {
-  z-index: 7;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-}
-
-.matrix-light {
-  display: grid;
-  place-content: center;
-  width: 21px;
-  height: 21px;
-  border: 1px solid #e5ffe6;
-  background: #96ffa5;
-  color: #0c361d;
-  box-shadow: 0 0 12px #69ff9080;
-  font-size: 13px;
-}
-
-.matrix-orb { width: 9px; height: 9px; background: #abf5ff; box-shadow: 0 0 0 2px #287fbf, 0 0 13px #42c7ff; }
 
 .player {
-  z-index: 10;
   border-radius: 50%;
   background: #2688ff;
-  box-shadow: 0 0 8px #2688ffcc, 0 0 4px #2688ff66;
+  box-shadow: 0 0 8px rgba(38, 136, 255, 0.8), 0 0 4px rgba(38, 136, 255, 0.4);
+  z-index: 10;
+  transform-origin: center;
+  will-change: transform, left, top;
 }
 
-.player-boost { background: #2688ff; box-shadow: 0 0 12px #2688ff, 0 0 6px #2688ff; }
-.boost-trail { z-index: 8; width: 6px; height: 6px; border-radius: 50%; background: #80cfff; box-shadow: 0 0 12px 4px #408dff83; }
+/* Effetto boost per il giocatore */
+.player-boost {
+  background: #2688ff;
+  box-shadow: 0 0 12px #2688ff, 0 0 6px #2688ff;
+  animation: boost-pulse 0.3s ease-in-out infinite alternate;
+}
 
-.enemy { z-index: 6; border-radius: 50%; border: 1px solid #ff6666; background: #ba161c; box-shadow: 0 0 5px #ff40599e; }
-.enemy-medium { border-color: #ffc0ad; background: #ff7751; }
-.enemy-high { background: #ff0000; box-shadow: 0 0 10px #ff0000cc; }
+@keyframes boost-pulse {
+  0% {
+    box-shadow: 0 0 10px #2688ff, 0 0 5px #2688ff;
+  }
+  100% {
+    box-shadow: 0 0 15px #2688ff, 0 0 8px #2688ff;
+  }
+}
 
-.bonus { z-index: 5; transform: rotate(45deg); border-radius: 2px; background: #f0fff7; box-shadow: 0 0 8px #dcffed; }
-.bonus-rich { background: #ffe499; box-shadow: 0 0 9px #ffbb55; }
+/* Miglioramento effetto nemici - ottimizzato */
+.enemy {
+  border-radius: 50%;
+  z-index: 5;
+  background-color: rgba(255, 0, 0, 0.7);
+  will-change: transform, left, top;
+}
 
-.matrix-soul, .soul-landing { z-index: 11; width: 17px; height: 17px; border: 2px solid #e8c2ff; background: #b167e741; box-shadow: 0 0 14px #b167e7; }
-.soul-link { z-index: 9; border-top: 2px dotted #d1a2fc; transform-origin: left center; }
-.matrix-soul.is-blocked { border-color: #ffba7d; box-shadow: none; background: transparent; }
-.soul-link.is-blocked { border-color: #ffba7d; }
-.soul-landing { width: 13px; height: 13px; border: 1px dashed #edd9ff; background: transparent; }
+.enemy-low {
+  background-color: rgba(139, 0, 0, 0.7);
+  box-shadow: 0 0 6px rgba(139, 0, 0, 0.8);
+  border: 1px solid rgba(255, 0, 0, 0.6);
+}
 
-.game-area::after {
+.enemy-medium {
+  background-color: rgba(255, 69, 0, 0.7);
+  box-shadow: 0 0 8px rgba(255, 69, 0, 0.8);
+  border: 1px solid rgba(255, 69, 0, 0.8);
+}
+
+.enemy-high {
+  background-color: rgba(255, 0, 0, 0.7);
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+  border: 1px solid rgba(255, 0, 0, 1);
+  animation: pulse-enemy 3s infinite alternate; /* Rallentata l'animazione */
+}
+
+@keyframes pulse-enemy {
+  0% {
+    box-shadow: 0 0 6px rgba(255, 0, 0, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.9);
+  }
+}
+
+.bonus {
+  border-radius: 50%;
+  background: linear-gradient(to right, #7fff00, #00ff00);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+  animation: pulse 3s infinite alternate; /* Rallentata l'animazione */
+  z-index: 5;
+  will-change: transform, left, top;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.9);
+  }
+}
+
+.obstacle {
+  background: rgba(255, 0, 0, 0.7);
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.7);
+  z-index: 4;
+  will-change: transform;
+}
+
+.boost-trail {
   position: absolute;
-  inset: 0;
-  z-index: 14;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2688ff;
+  box-shadow: 0 0 8px 3px #2688ff, 0 0 20px 6px rgba(38, 136, 255, .55);
   pointer-events: none;
-  content: "";
-  box-shadow: inset 0 0 24px #080e104d;
+  z-index: 9;
 }
 
-.time-dilated::after {
-  border: 2px solid rgb(124 212 244 / var(--slow));
-  box-shadow: inset 0 0 55px rgb(86 163 232 / var(--slow));
+.player-profile, .leaderboard {
+  width: min(800px, 96vw);
+  box-sizing: border-box;
+  font-size: 13px;
 }
-
-.time-stopped .arena-world * { animation-play-state: paused; }
-.dash-active::before { position: absolute; inset: 0; z-index: 15; pointer-events: none; content: ""; border: 1px solid #83c6ff; box-shadow: inset 0 0 10px #5ba8ff78; }
-
-.matrix-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin: 11px 0 21px;
-  padding: 0;
-  list-style: none;
-  color: #a7bfb5;
-  font-size: 11px;
-}
-
-.matrix-controls kbd { color: #e1f7e9; font: inherit; }
-
-.leaderboard { padding: 12px 15px; border: 1px solid #2d473f; border-radius: 5px; background: #0b1715; text-align: left; }
-.leaderboard h2 { margin: 0 0 5px; color: #d8eee3; font-size: 12px; letter-spacing: .06em; }
-.leaderboard small, .leaderboard p { color: #97b5a8; font-size: 11px; font-weight: normal; }
-.leaderboard p { margin: 0; }
-.leaderboard ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); column-gap: 35px; margin: 0; padding-left: 24px; font-size: 12px; }
-.leaderboard li { padding: 3px 0; }
+.player-profile { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; }
+.player-profile input { background: #071707; color: #caffca; border: 1px solid #0f0; padding: 7px; font: inherit; }
+.player-profile span { margin-left: auto; }
+.leaderboard { margin: 14px 0 24px; padding: 10px 16px; border: 1px solid #185718; text-align: left; }
+.leaderboard h2 { font-size: 16px; margin: 0 0 8px; }
+.leaderboard small { font-size: 11px; font-weight: normal; color: #9baa9b; }
+.leaderboard ol { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 30px; margin: 0; padding-left: 25px; }
+.leaderboard li { padding: 2px 0; }
 .leaderboard li strong { float: right; }
+.leaderboard p { margin: 0; color: #9baa9b; }
 
-@media (max-width: 520px) {
-  .matrix-shell { width: calc(100% - 18px); padding-top: 16px; }
-  .ui-bar { padding-inline: 8px; }
-  .arena-location { inset: 7px 7px auto; }
-  .arena-location span { font-size: 9px; }
+.trajectory-dot {
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform, opacity;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .matrix-trace::after, .matrix-door.is-open span { animation: none; }
+.cooldown-bar {
+  border: 1px solid #0f0;
+  background-color: rgba(0, 20, 0, 0.5);
 }
 
-.matrix-room { --vessel: #f28bb1; --tissue: #211621; --structure: #ab6598; }
-.matrix-room[data-tissue="Cuore"] { --tissue: #28151e; --vessel: #ff8c9f; --structure: #cb667b; }
-.matrix-room[data-tissue="Polmoni"] { --tissue: #101f29; --vessel: #7edcff; --structure: #54a6c4; }
-.matrix-room[data-tissue="Fegato"] { --tissue: #241c12; --vessel: #ffd089; --structure: #c49a56; }
-.matrix-room[data-tissue="Cervello"] { --tissue: #1c172b; --vessel: #c6adff; --structure: #a089de; }
-.matrix-room[data-health="sana"] { --tissue: #102722; --vessel: #82ebc2; --structure: #62b49b; }
-
-.matrix-room .sector-floor {
-  background:
-    linear-gradient(90deg, #ffffff12 1px, transparent 1px),
-    linear-gradient(#ffffff12 1px, transparent 1px),
-    var(--tissue);
-  background-size: 40px 40px;
+.cooldown-progress {
+  transition: width 0.1s linear; /* Transizione più veloce */
 }
-.matrix-room .room-coordinate { color: var(--structure); font-size: 21px; letter-spacing: .01em; }
-.matrix-room .matrix-wall {
-  background: color-mix(in srgb, var(--structure) 65%, #0a1014);
-  border-color: var(--structure);
-}
-.matrix-room .matrix-trace { background: color-mix(in srgb, var(--vessel) 52%, var(--tissue)); }
-.matrix-room .matrix-trace::after { opacity: .45; }
-.matrix-room[data-health="sana"] .matrix-trace::after { animation-duration: 6s; }
-.matrix-door:not(.is-open) { background: #81ef9e; border-color: #c1ffd2; }
-.matrix-door.is-open { border-color: #81ddff; }
-.matrix-door.is-open span { color: #b7edff; }
-.matrix-light { outline: 1px solid #9bffb0; outline-offset: 2px; box-shadow: none; }
-.matrix-orb { width: 12px; height: 12px; box-shadow: 0 0 0 2px #2078b1; }
 
-.cleanse-signal { position: absolute; z-index: 21; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border: 1px solid #73e8ad; color: #cdffe0; background: #103a2d; }
-.body-guide { color: #c4dcd2; font-size: 12px; }
-.matrix-room[data-health="infetta"] .room-coordinate { text-decoration: underline dotted; text-underline-offset: 5px; }
+.cooldown-label {
+  text-shadow: 0 0 3px #0f0;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.info-text {
+  color: #0f0;
+  font-weight: bold;
+  text-shadow: 0 0 3px #0f0;
+}
+
+/* Animazioni ottimizzate */
+@keyframes glitch {
+  0% {
+    transform: translate(0);
+  }
+  20% {
+    transform: translate(-2px, 2px);
+  }
+  80% {
+    transform: translate(2px, -2px);
+  }
+  100% {
+    transform: translate(0);
+  }
+}
